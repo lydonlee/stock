@@ -15,6 +15,11 @@ def dftostring(df):
     df_string = StringIO(df.to_csv())
     return df_string.read()
 
+def testdf():
+    d = {'col1': [1, 2], 'col2': [3, 4]}
+    df = pd.DataFrame.from_dict(d)
+    return df
+    
 if __name__ == '__main__':
     d = {'col1': [1, 2], 'col2': [3, 4]}
     df = pd.DataFrame.from_dict(d)

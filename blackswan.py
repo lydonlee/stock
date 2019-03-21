@@ -5,6 +5,7 @@ import csv
 import shutil
 import os
 from util import util 
+
 '''
 黑天鹅事件导致个股快速下跌，
 统计黑天鹅事件bs_amount,保存在blackswan_csv里,在blackswan_csv1里增加未来3个月股价走势
@@ -15,18 +16,17 @@ from util import util
 class blackswan(object):
     def __init__(self):
         self.blackday = 30
-        self.droprate = 0.4
+        self.droprate = 0.3
         self.blackswan_list = []
         self.blackswan_csv = 'E:\stock\stock\data\mblackswan.csv'
         self.blackswan_csv1 = 'E:\stock\stock\data\mblackswan1.csv'
         self.moniter_csv = 'E:\stock\stock\data\moniter_blackswan.csv'
-        self.row_total_mv = 15
+        self.step = 1
         self.df = pd.DataFrame()
     def moniter(self):
         msql = md.datamodule()
         #add culmn name to self.df
-        emptydf = msql.pull_mysql(db = 'daily_basic_ts_code',date = '20190303',ts_code = '300552.SZ')
-        self.df = emptydf
+        emptydf = pd.DataFrame()
         t_today = datetime.datetime.now()
         t_delta = datetime.timedelta(self.blackday+20)
         t_startday = t_today - t_delta
@@ -43,8 +43,14 @@ class blackswan(object):
                     df1= pd.concat([df1,dftemp],ignore_index = True)
             if not df1.empty:
                 self.sub_findblackswan(df = df1)
-        
-        self.df.to_csv(self.moniter_csv,index=False)
+
+        try:
+            str = util.dftostring(df)
+            util.sendmail(str)
+            self.df.to_csv(self.moniter_csv,index=False)
+
+        except:
+            print("self.df.to_csv failed!!!")
         return 
         
     def train(self):
@@ -63,8 +69,6 @@ class blackswan(object):
         total = len(df)
   
         for i,row in df.iterrows():
-            total_mv = row[self.row_total_mv]
-
             trade_day = str(row['trade_date'])
             lestdays = len(tradeday_list)
             try:
@@ -90,27 +94,23 @@ class blackswan(object):
             df_threemonth = msql.pull_mysql(db = 'daily_basic_ts_code',date = date_treemonth,ts_code = row['ts_code'])
             
             if not df_onemonth.empty:
-                df.at[i,'onemonth'] = df_onemonth.iloc[0]['total_mv']
+                df.at[i,'onemonth'] = df_onemonth.loc[0]['total_mv']
             if not df_twomonth.empty:
-                df.at[i,'twomonth'] = df_twomonth.iloc[0]['total_mv']
+                df.at[i,'twomonth'] = df_twomonth.loc[0]['total_mv']
             if not df_threemonth.empty:
-                df.at[i,'threemonth'] = df_threemonth.iloc[0]['total_mv']
+                df.at[i,'threemonth'] = df_threemonth.loc[0]['total_mv']
 
         df.to_csv(self.blackswan_csv1,index=False)
         return
  
     def sub_findall_blackswan(self):
-        msql = md.datamodule()
-        #add culmn name to self.df
-        self.df = msql.pull_mysql(db = 'daily_basic_ts_code',date = '20190303',ts_code = '300552.SZ')
-        
         ts_code_df = msql.getts_code()
 
         for i,code in ts_code_df.iterrows():
             df1 = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = code['ts_code'])
             self.sub_findblackswan(df = df1)
-        
-        self.df.to_csv(self.blackswan_csv,index=False)
+        df = d.removedupdate(d.self.df)
+        df.to_csv(self.blackswan_csv,index=False)
         shutil.copy(self.blackswan_csv,self.blackswan_csv1)
 
         return 
@@ -118,25 +118,53 @@ class blackswan(object):
     def sub_findblackswan(self,df):
         lenth = len(df)
         lastday = self.blackday
-        df.reindex()
-        
         for i, row in df.iterrows():
             if (i+lastday >= lenth):
                 break
-                
-            if (df.iloc[i][self.row_total_mv] == 0):
+            #控制步长
+
+            if (i % self.step) != 0:
                 continue
-            
-            if (df.iloc[i][self.row_total_mv] - df.iloc[i+lastday-1][self.row_total_mv])/df.iloc[i][self.row_total_mv]> self.droprate:
-                self.df = pd.concat([self.df,df.loc[i+lastday-1:i+lastday-1,'index':'circ_mv']],ignore_index = True)
-                print(df.loc[i+lastday-1:i+lastday-1,'index':'circ_mv'])
-    
+   
+            if (df.loc[i]['total_mv'] == 0):
+                continue
+
+            rate = (df.loc[i]['total_mv'] - df.loc[i+lastday-1]['total_mv'])/df.loc[i]['total_mv']
+            if rate > self.droprate:
+                self.df = pd.concat([self.df,df.loc[i+lastday-1:i+lastday-1,]],ignore_index = True)
+
+    def removedupdate(self,df):
+        df1 = pd.DataFrame()
+        df['trade_date'] = df['trade_date'].astype('int')
+        lenth = len(df)
+        for i, row in df.iterrows():
+            if i+1 < lenth:
+                if df.loc[i+1]['trade_date'] - df.loc[i]['trade_date'] > 10 :
+                    df1 = pd.concat([df1,df.loc[i:i,]],ignore_index=True)
+        df1 = pd.concat([df1,df.loc[lenth-1:lenth-1,]],ignore_index=True)
+        return df1
+
+    def test_findoneblackswan(self,code = '000001.SZ'):  
+        msql = md.datamodule()      
+        df1 = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = code)
+        self.sub_findblackswan(df = df1)
+        print(self.df)
+
 if __name__ == '__main__':
     d = blackswan()
     "d.sub_findblackswan('20150101','20190312')"
     "d.sub_getlaterprice()"
-    d.moniter()
-    util.sendmail(mailcontent = 'moniter finished')
+    #d.moniter()
+    #d.train()
+    #d.test_findoneblackswan('600703.SH')
+    #d.test_findoneblackswan('600519.SH')
+    #d.test_findoneblackswan('600887.SH')
+    #df = pd.read_csv(d.blackswan_csv)
+    #df = d.removedupdate(df)
+    #df.to_csv(d.blackswan_csv1,index=False)
+    d.sub_getlaterprice()
+
+    #util.sendmail(mailcontent = 'monitor finished')
 
 
     

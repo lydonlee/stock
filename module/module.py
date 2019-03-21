@@ -30,6 +30,8 @@ class datamodule(object):
         except:
             print("err：pull_mysql"+sql_cmd)
         yconnect.dispose()
+        df = df.sort_values(by = 'trade_date',axis = 0,ascending = True)
+        df = df.reset_index()
         return df
 
     def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809'):
