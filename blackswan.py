@@ -43,6 +43,7 @@ class blackswan(object):
                     df1= pd.concat([df1,dftemp],ignore_index = True)
             if not df1.empty:
                 self.sub_findblackswan(df = df1)
+                print(self.df)
 
         try:
             str = util.dftostring(df)
@@ -65,6 +66,9 @@ class blackswan(object):
         df['onemonth'] = 0
         df['twomonth'] = 0
         df['threemonth'] = 0
+        df['onedate'] = 0
+        df['twodate'] = 0
+        df['threedate'] = 0
 
         total = len(df)
   
@@ -95,10 +99,13 @@ class blackswan(object):
             
             if not df_onemonth.empty:
                 df.at[i,'onemonth'] = df_onemonth.loc[0]['total_mv']
+                df.at[i,'onedate'] = df_onemonth.loc[0]['trade_date']                
             if not df_twomonth.empty:
                 df.at[i,'twomonth'] = df_twomonth.loc[0]['total_mv']
+                df.at[i,'twodate'] = df_twomonth.loc[0]['trade_date'] 
             if not df_threemonth.empty:
                 df.at[i,'threemonth'] = df_threemonth.loc[0]['total_mv']
+                df.at[i,'threedate'] = df_threemonth.loc[0]['trade_date']
 
         df.to_csv(self.blackswan_csv1,index=False)
         return
@@ -130,6 +137,7 @@ class blackswan(object):
                 continue
 
             rate = (df.loc[i]['total_mv'] - df.loc[i+lastday-1]['total_mv'])/df.loc[i]['total_mv']
+            print(rate)
             if rate > self.droprate:
                 self.df = pd.concat([self.df,df.loc[i+lastday-1:i+lastday-1,]],ignore_index = True)
 
