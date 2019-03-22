@@ -5,8 +5,8 @@ from config import config
 
 class basicvalue(object):
     def __init__(self):
-        cfg = config.configs.blackswan
-        self.periodbyday = 1000
+        cfg = config.configs.basicvalue
+        self.periodbyday = 300
         self.df = pd.DataFrame()
         self.col_list = ['close','pe_ttm','pb','turnover_rate_f','ps_ttm','total_mv']
         self.basic_csv = cfg.basic_csv
@@ -64,5 +64,6 @@ class basicvalue(object):
         print(latestday)
 if __name__ == '__main__':
     b = basicvalue()
+    b.builddf()
     b.moniter()
         
