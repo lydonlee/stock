@@ -35,8 +35,9 @@ configs = config_default.configs
 try:
     from config import config_override
     configs = config_override.configs
+    print('use config_override')
 except ImportError:
-    print('err: config_override')
+    print('use config_default')
     pass
 
 configs = toDict(configs)

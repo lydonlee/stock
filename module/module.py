@@ -3,23 +3,26 @@ import pandas as pd
 from sqlalchemy import create_engine
 import datetime
 import csv
-
+from config import config
 class datamodule(object):
     def __init__(self):
+        cfg = config.configs.module
         ts.set_token('1360474e70eee70c9c1b9740d684a8800e89903641c6ffb82ac549da')
         self.pro = ts.pro_api()
-        self.db_func_list = ['daily_basic','margin_detail','daily_basic_ts_code']
-        self.mysqlrecord = 'E:\stock\stock\data\mysqlrecord.csv'
-        self.mysqlcmd = 'mysql+pymysql://root:152921@localhost:3306/{}?charset=utf8'
+        self.db_func_list = cfg.db_func_list
+        self.mysqlrecord = cfg.mysqlrecord
+        self.mysqlcmd = cfg.mysqlcmd
     
-    def pull_mysql(self,db = 'daily_basic',date = '12345678',ts_code = '300552.SZ'):
+    def pull_mysql(self,db = 'daily_basic',date = None,limit = None,ts_code = '300552.SZ'):
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd) 
         df = pd.DataFrame()
         if db == 'daily_basic_ts_code': 
             '以数字开头的数据库名字要用1前边的那个符号引用才能识别'
-            if date == '12345678':
-                sql_cmd = 'select * from `'+ts_code + '`'
+            if limit != None:
+                sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC limit '+ str(limit) 
+            elif date == None:
+                sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC'
             else:
                 sql_cmd = 'select * from `'+ts_code + '`' +'where trade_date = '+date
         else:
@@ -28,10 +31,12 @@ class datamodule(object):
         try:
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
         except:
-            print("err：pull_mysql"+sql_cmd)
+            print("err：pull_mysql:"+sql_cmd)
         yconnect.dispose()
-        df = df.sort_values(by = 'trade_date',axis = 0,ascending = True)
-        df = df.reset_index()
+        #select *, count(distinct name) from table group by name
+        #df = df.drop_duplicates(['trade_date'])
+        #df = df.sort_values(by = 'trade_date',axis = 0,ascending = True)
+        #df = df.reset_index()
         return df
 
     def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809'):
@@ -106,6 +111,15 @@ class datamodule(object):
     def savemysqlrecorde(self,db = 'margin_detail',wstart = '20180401',wend='20180501'):
         df = pd.DataFrame([[db,wstart,wend]])
         df.to_csv(self.mysqlrecord,mode='a',header = False)
+
+    def getlatestday(self,db = 'margin_detail'):
+        df = pd.read_csv(self.mysqlrecord)
+        latestday = 0
+        for index, row in df.iterrows():
+            if (row['db'] == db) :
+                if latestday < int(row['end']):
+                    latestday = int(row['end'])
+        return str(latestday)            
 
     def getts_code(self):
         df = self.pro.query('stock_basic',exchange='', list_status='L', fields='ts_code')

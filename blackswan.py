@@ -5,6 +5,7 @@ import csv
 import shutil
 import os
 from util import util 
+from config import config
 
 '''
 黑天鹅事件导致个股快速下跌，
@@ -15,36 +16,24 @@ from util import util
 '''
 class blackswan(object):
     def __init__(self):
+        cfg = config.configs.blackswan
         self.blackday = 30
         self.droprate = 0.3
+        self.periodbyday = 100
         self.blackswan_list = []
-        self.blackswan_csv = 'E:\stock\stock\data\mblackswan.csv'
-        self.blackswan_csv1 = 'E:\stock\stock\data\mblackswan1.csv'
-        self.moniter_csv = 'E:\stock\stock\data\moniter_blackswan.csv'
+        self.blackswan_csv = cfg.blackswan_csv
+        self.blackswan_csv1 = cfg.blackswan_csv1
+        self.moniter_csv = cfg.moniter_csv
         self.step = 1
         self.df = pd.DataFrame()
     def moniter(self):
         msql = md.datamodule()
-        #add culmn name to self.df
-        emptydf = pd.DataFrame()
-        t_today = datetime.datetime.now()
-        t_delta = datetime.timedelta(self.blackday+20)
-        t_startday = t_today - t_delta
-        today = t_today.strftime('%Y%m%d')
-        startday = t_startday.strftime('%Y%m%d')
         ts_code_df = msql.getts_code()
-        ts_day_list = msql.gettradedays(start_date1= startday,end_date1 = today)
-        
         for i,code in ts_code_df.iterrows():
-            df1 = emptydf
-            for day in ts_day_list:
-                dftemp = msql.pull_mysql(db = 'daily_basic_ts_code',date = day,ts_code = code['ts_code'])
-                if not dftemp.empty:
-                    df1= pd.concat([df1,dftemp],ignore_index = True)
+            df1 = msql.pull_mysql(db = 'daily_basic_ts_code',limit = self.periodbyday,ts_code = code['ts_code'])
             if not df1.empty:
                 self.sub_findblackswan(df = df1)
                 print(self.df)
-
         try:
             str = util.dftostring(df)
             util.sendmail(str)
@@ -111,12 +100,13 @@ class blackswan(object):
         return
  
     def sub_findall_blackswan(self):
+        msql = md.datamodule()
         ts_code_df = msql.getts_code()
 
         for i,code in ts_code_df.iterrows():
             df1 = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = code['ts_code'])
             self.sub_findblackswan(df = df1)
-        df = d.removedupdate(d.self.df)
+        df = self.removedupdate(self.df)
         df.to_csv(self.blackswan_csv,index=False)
         shutil.copy(self.blackswan_csv,self.blackswan_csv1)
 
@@ -132,14 +122,12 @@ class blackswan(object):
 
             if (i % self.step) != 0:
                 continue
-   
-            if (df.loc[i]['total_mv'] == 0):
+            if (df.loc[i+lastday-1]['total_mv']) == 0):
                 continue
+            rate =df.loc[i+lastday-1]['total_mv']) - (df.loc[i]['total_mv'] /df.loc[i+lastday-1]['total_mv'])
 
-            rate = (df.loc[i]['total_mv'] - df.loc[i+lastday-1]['total_mv'])/df.loc[i]['total_mv']
-            print(rate)
             if rate > self.droprate:
-                self.df = pd.concat([self.df,df.loc[i+lastday-1:i+lastday-1,]],ignore_index = True)
+                self.df = pd.concat([self.df,df.loc[i:i,]],ignore_index = True)
 
     def removedupdate(self,df):
         df1 = pd.DataFrame()
@@ -156,22 +144,26 @@ class blackswan(object):
         msql = md.datamodule()      
         df1 = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = code)
         self.sub_findblackswan(df = df1)
-        print(self.df)
+        df = d.removedupdate(self.df)
+        print(df)
 
 if __name__ == '__main__':
     d = blackswan()
+    m = md.datamodule()
+    #m.updatalldb()
+
     "d.sub_findblackswan('20150101','20190312')"
     "d.sub_getlaterprice()"
     #d.moniter()
     #d.train()
-    #d.test_findoneblackswan('600703.SH')
-    #d.test_findoneblackswan('600519.SH')
-    #d.test_findoneblackswan('600887.SH')
+    d.test_findoneblackswan('600703.SH')
+    d.test_findoneblackswan('600519.SH')
+    d.test_findoneblackswan('600887.SH')
     #df = pd.read_csv(d.blackswan_csv)
     #df = d.removedupdate(df)
     #df.to_csv(d.blackswan_csv1,index=False)
-    d.sub_getlaterprice()
-
+    #d.sub_getlaterprice()
+    
     #util.sendmail(mailcontent = 'monitor finished')
 
 
