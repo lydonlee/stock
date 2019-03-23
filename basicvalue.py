@@ -18,6 +18,7 @@ class basicvalue(object):
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
         df_now.set_index(["ts_code"], inplace=True)
 
+        #读取过去几年最高价和最低价记录
         df_basic = pd.read_csv(self.basic_csv)
         df_basic.set_index(["ts_code"], inplace=True) 
 
@@ -25,16 +26,9 @@ class basicvalue(object):
             collow = col +'low'
             colhigh = col+'high'
             colrate = col+'rate'
-            for i,row in df_basic.iterrows(): 
-                try:
-                    now = df_now.loc[i][col]
-                    low = df_basic.loc[i][collow]
-                    high = df_basic.loc[i][colhigh]
 
-                    df_basic.at[i,col] = df_now.loc[i][col] 
-                    df_basic.at[i,colrate] = (now-low)/(high - low)*100
-                except:
-                    print('err:not find this',i)
+            df_basic[col] = df_now[col]
+            df_basic[colrate] = (df_now[col] - df_basic[collow])/(df_basic[colhigh]-df_basic[collow])*100
         
         df_basic.to_csv(self.monitor_basic)
         
@@ -64,6 +58,6 @@ class basicvalue(object):
         print(latestday)
 if __name__ == '__main__':
     b = basicvalue()
-    b.builddf()
+    #b.builddf()
     b.moniter()
         
