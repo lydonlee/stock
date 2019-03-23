@@ -5,7 +5,7 @@ import csv
 import shutil
 import os
 from util import util 
-from config import config
+import config
 
 '''
 黑天鹅事件导致个股快速下跌，
@@ -26,6 +26,7 @@ class blackswan(object):
         self.moniter_csv = cfg.moniter_csv
         self.step = 1
         self.df = pd.DataFrame()
+
     def moniter(self):
         msql = md.datamodule()
         ts_code_df = msql.getts_code()
@@ -122,12 +123,14 @@ class blackswan(object):
 
             if (i % self.step) != 0:
                 continue
-            if (df.loc[i+lastday-1]['total_mv']) == 0):
+   
+            if (df.loc[i]['total_mv'] == 0):
                 continue
-            rate =df.loc[i+lastday-1]['total_mv']) - (df.loc[i]['total_mv'] /df.loc[i+lastday-1]['total_mv'])
 
+            rate = (df.loc[i]['total_mv'] - df.loc[i+lastday-1]['total_mv'])/df.loc[i]['total_mv']
+            print(rate)
             if rate > self.droprate:
-                self.df = pd.concat([self.df,df.loc[i:i,]],ignore_index = True)
+                self.df = pd.concat([self.df,df.loc[i+lastday-1:i+lastday-1,]],ignore_index = True)
 
     def removedupdate(self,df):
         df1 = pd.DataFrame()
@@ -154,7 +157,7 @@ if __name__ == '__main__':
 
     "d.sub_findblackswan('20150101','20190312')"
     "d.sub_getlaterprice()"
-    #d.moniter()
+    d.moniter()
     #d.train()
     d.test_findoneblackswan('600703.SH')
     d.test_findoneblackswan('600519.SH')

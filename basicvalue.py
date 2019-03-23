@@ -1,7 +1,7 @@
 import pandas as pd
 from module import module as md
 import datetime
-from config import config
+import config
 
 class basicvalue(object):
     def __init__(self):

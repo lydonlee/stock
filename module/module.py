@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 import datetime
 import csv
-from config import config
+import config
 class datamodule(object):
     def __init__(self):
         cfg = config.configs.module
