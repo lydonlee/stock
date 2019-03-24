@@ -33,14 +33,13 @@ class datamodule(object):
         except:
             print("err：pull_mysql:"+sql_cmd)
         yconnect.dispose()
-        #select *, count(distinct name) from table group by name
-        #df = df.drop_duplicates(['trade_date'])
-        #df = df.sort_values(by = 'trade_date',axis = 0,ascending = True)
-        #df = df.reset_index()
+
         return df
 
     def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809'):
-        yconnect = create_engine('mysql+pymysql://root:152921@localhost:3306/'+database+'?charset=utf8') 
+        concmd = self.mysqlcmd.format(database)
+        yconnect = create_engine(concmd)
+
         tradedays_list = self.gettradedays(start,end)
         for day in tradedays_list:
             try:
