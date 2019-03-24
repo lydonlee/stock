@@ -39,7 +39,6 @@ class datamodule(object):
     def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809'):
         concmd = self.mysqlcmd.format(database)
         yconnect = create_engine(concmd)
-
         tradedays_list = self.gettradedays(start,end)
         for day in tradedays_list:
             try:
@@ -76,7 +75,9 @@ class datamodule(object):
         yconnect.dispose()
         self.savemysqlrecorde(db ='daily_basic_ts_code',wstart = start,wend=end)
 
-
+    def getstock_basic(self):
+        df = self.pro.query('stock_basic',exchange='', list_status='L')
+        return df
     def gettradedays(self,start_date1='', end_date1=''):
 
         if start_date1 == '' and end_date1 == '' :
@@ -93,7 +94,9 @@ class datamodule(object):
         start = int(wstart)
         end = int(wend)
 
+    
         df = pd.read_csv(self.mysqlrecord)
+
         for index, row in df.iterrows():
             if (row['db'] == db) :
                 if start > int(row['start']) and start < int(row['end']) and end < int(row['end']):
@@ -124,14 +127,18 @@ class datamodule(object):
         df = self.pro.query('stock_basic',exchange='', list_status='L', fields='ts_code')
         return df
 
-    def updatalldb(self):
+    def updatalldb(self,firsttime = 0):
         now = datetime.datetime.now().strftime('%Y%m%d')
         for db1 in self.db_func_list:
-            s,e = self.datanotinmysql(db = db1,wstart = '20190101',wend = now )
-            if s == e:
+            if firsttime == 0:
+                s,e = self.datanotinmysql(db = db1,wstart = '20190101',wend = now )
+            else:
+                s = '19950101'
+                e = now
+            if s ==  '0' and e == '0':
                 continue
             elif db1 == 'daily_basic_ts_code':
-                self.push_daily_basic(start=s,end=e)
+                self.push_daily_basic(start=s,end=e,firsttime)
             else:
                 self.push_mysql(database = db1,start=s,end=e)
 
