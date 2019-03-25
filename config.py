@@ -1,6 +1,6 @@
 import os
 import sys
-
+import platform
 # 将根目录路径添加到环境变量中
 ROOT_PATH = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(ROOT_PATH)
@@ -17,11 +17,16 @@ for path in MODULE_PATH.values():
     if path not in sys.path:
         sys.path.append(path)
 
+if 'Windows' in platform.uname() :
+    db_func_list = ['daily_basic_ts_code','daily_basic','margin_detail']
+else:
+    db_func_list = ['daily_basic_ts_code']
+    
 configs = {
     'module': {
-        'db_func_list'  : ['daily_basic_ts_code'],
+        'db_func_list'  : db_func_list,
         'mysqlrecord'   : os.path.join(MODULE_PATH['data'],'mysqlrecord1.csv'),
-        'mysqlcmd'      : 'mysql+pymysql://root:Lg152921@localhost:3306/{}?charset=utf8',
+        'mysqlcmd'      : 'mysql+pymysql://root:152921@localhost:3306/{}?charset=utf8',
     },
     'blackswan': {
         'blackswan_csv' : os.path.join(MODULE_PATH['data'],'mblackswan.csv'),
