@@ -18,7 +18,7 @@ class blackswan(object):
     def __init__(self):
         cfg = config.configs.blackswan
         self.blackday = 30
-        self.droprate = 0.3
+        self.droprate = 0.1
         self.periodbyday = 100
         self.blackswan_list = []
         self.blackswan_csv = cfg.blackswan_csv

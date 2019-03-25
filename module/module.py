@@ -36,10 +36,10 @@ class datamodule(object):
 
         return df
 
-    def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809'):
+    def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809',firsttime = 0):
         concmd = self.mysqlcmd.format(database)
         yconnect = create_engine(concmd)
-        tradedays_list = self.gettradedays(start,end)
+        tradedays_list = self.gettradedays(start,end,firsttime = firsttime)
         for day in tradedays_list:
             try:
                 df = self.pro.query(database,trade_date = day)
@@ -50,7 +50,6 @@ class datamodule(object):
                 continue 
 
         yconnect.dispose()
-        self.savemysqlrecorde(db =database,wstart = start,wend=end)
 
     def push_daily_basic(self,start='20180802',end='20180809',firsttime = 0):
         sqlcmd=self.mysqlcmd.format('daily_basic_ts_code')
@@ -73,14 +72,13 @@ class datamodule(object):
             
         
         yconnect.dispose()
-        self.savemysqlrecorde(db ='daily_basic_ts_code',wstart = start,wend=end)
 
     def getstock_basic(self):
         df = self.pro.query('stock_basic',exchange='', list_status='L')
         return df
-    def gettradedays(self,start_date1='', end_date1=''):
+    def gettradedays(self,start_date1='', end_date1='',firsttime = 0):
 
-        if start_date1 == '' and end_date1 == '' :
+        if firsttime == 1 :
             df = self.pro.trade_cal(exchange='')
         else:    
             df = self.pro.trade_cal(exchange='', start_date=start_date1 , end_date=end_date1)
@@ -89,39 +87,21 @@ class datamodule(object):
             if df.iloc[i]['is_open']==1:
                 tradedays_list.append(df.iloc[i]['cal_date'])
         return tradedays_list
-    
-    def datanotinmysql(self,db = 'margin_detail',wstart = '20180205',wend='20180601'):
-        start = int(wstart)
-        end = int(wend)
-
-    
-        df = pd.read_csv(self.mysqlrecord)
-
-        for index, row in df.iterrows():
-            if (row['db'] == db) :
-                if start > int(row['start']) and start < int(row['end']) and end < int(row['end']):
-                    start = '0'
-                    end = '0'
-                    return start,end
-                elif start >= int(row['start']) and start < int(row['end']) and end >= int(row['end']):
-                    start = row['end']
-                elif start < int(row['start']) and end > int(row['start']) and end < int(row['end']):
-                    end = row['start']
-
-        return str(start) , str(end)
-
-    def savemysqlrecorde(self,db = 'margin_detail',wstart = '20180401',wend='20180501'):
-        df = pd.DataFrame([[db,wstart,wend]])
-        df.to_csv(self.mysqlrecord,mode='a',header = False)
 
     def getlatestday(self,db = 'margin_detail'):
-        df = pd.read_csv(self.mysqlrecord)
-        latestday = 0
-        for index, row in df.iterrows():
-            if (row['db'] == db) :
-                if latestday < int(row['end']):
-                    latestday = int(row['end'])
-        return str(latestday)            
+        concmd = self.mysqlcmd.format(db)
+        yconnect = create_engine(concmd)
+        if db == 'daily_basic_ts_code':
+            sql_cmd = "select trade_date from `000002.SZ` order by trade_date DESC limit 1"
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+            lastday = df.iloc[0][0]
+        
+        else:
+            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA="+"'"+db+"'"+" order by TABLE_NAME DESC LIMIT 1"
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+            ttable = df.iloc[0][0]
+            lastday = ttable[1:]
+        return lastday           
 
     def getts_code(self):
         df = self.pro.query('stock_basic',exchange='', list_status='L', fields='ts_code')
@@ -130,17 +110,37 @@ class datamodule(object):
     def updatalldb(self,firsttime = 0):
         now = datetime.datetime.now().strftime('%Y%m%d')
         for db1 in self.db_func_list:
-            if firsttime == 0:
-                s,e = self.datanotinmysql(db = db1,wstart = '20190101',wend = now )
-            else:
+            try:
+                s = self.getlatestday(db1)
+            except:
+                print('not find database,the first time update!')
+                firsttime = 1
                 s = '19950101'
-                e = now
-            if s ==  '0' and e == '0':
+
+            if s == now:
+                print('already the latest db!')
                 continue
             elif db1 == 'daily_basic_ts_code':
-                self.push_daily_basic(start=s,end=e,firsttime)
+                self.push_daily_basic(start=s,end=now,firsttime=firsttime)
             else:
-                self.push_mysql(database = db1,start=s,end=e)
+                self.push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
+    #查看没有下载的数据库，重新下载            
+    def fix_daily_basic_ts_code(self):
+        sqlcmd=self.mysqlcmd.format('daily_basic_ts_code')
+        yconnect = create_engine(sqlcmd) 
+       
+        df1 = self.getts_code()
+
+        for index, code in df1.iterrows():
+            sql_cmd = "SELECT  *  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='daily_basic_ts_code' and TABLE_NAME="+"'" +code['ts_code']+"'"
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+            if df.empty:
+                try:
+                    df = self.pro.query('daily_basic',ts_code = code['ts_code'])
+                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='daily_basic_ts_code',if_exists='replace') 
+                except :
+                    print("err："+code['ts_code'])
+                continue 
 
 if __name__ == '__main__':
     d = datamodule()

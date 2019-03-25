@@ -17,11 +17,11 @@ class basicvalue(object):
         msql = md.datamodule()
         latestday = msql.getlatestday('daily_basic')
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
-        df_now.set_index(["ts_code"], inplace=True)
+        #df_now.set_index(["ts_code"], inplace=True)
 
         #读取过去几年最高价和最低价记录
         df_basic = pd.read_csv(self.basic_csv)
-        df_basic.set_index(["ts_code"], inplace=True) 
+        #df_basic.set_index(["ts_code"], inplace=True) 
 
         for col in self.col_list:
             collow = col +'low'
@@ -65,7 +65,7 @@ class basicvalue(object):
         
     def testlatestday(self):
         msql = md.datamodule()
-        latestday = msql.getlatestday('daily_basic')
+        latestday = msql.getlatestday('daily_basic_ts_code')
         print(latestday)
 
     def recommand_sum(self):
@@ -81,12 +81,13 @@ class basicvalue(object):
         df.to_csv(self.recommand_basic,index = True)
 
 if __name__ == '__main__':
-    #b = basicvalue()
+    b = basicvalue()
     msql = md.datamodule()
-    msql.push_daily_basic(start='19950101',end='20190324',firsttime = 1)
+    #msql.push_daily_basic(start='19950101',end='20190324',firsttime = 1)
     #df = msql.pull_mysql(db = 'daily_basic_ts_code',limit = b.periodbyday,ts_code = '300750.SZ')
     #b._appendcol(df,by = 'close',r = '300750.SZ')
-    #print(b.df)
+    #b.testlatestday()
+    msql.updatalldb()
     #df.to_csv(b.recommand_basic)
     #b.builddf()
     #b.moniter()
