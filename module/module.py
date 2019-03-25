@@ -116,7 +116,6 @@ class datamodule(object):
                 print('not find database,the first time update!')
                 firsttime = 1
                 s = '19950101'
-
             if s == now:
                 print('already the latest db!')
                 continue
@@ -124,15 +123,23 @@ class datamodule(object):
                 self.push_daily_basic(start=s,end=now,firsttime=firsttime)
             else:
                 self.push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
-    #查看没有下载的数据库，重新下载            
-    def fix_daily_basic_ts_code(self):
+            self.fix_db()
+    
+    #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
+    def fix_db(self,db = 'daily_basic_ts_code'):
+        if (db == 'daily_basic_ts_code'):
+            self._fix_daily_basic_ts_code()
+        else:
+            self._fix_otherdb(db)
+
+    def _fix_daily_basic_ts_code(self):
         sqlcmd=self.mysqlcmd.format('daily_basic_ts_code')
         yconnect = create_engine(sqlcmd) 
-       
-        df1 = self.getts_code()
 
+        df1 = self.getts_code()
+     
         for index, code in df1.iterrows():
-            sql_cmd = "SELECT  *  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='daily_basic_ts_code' and TABLE_NAME="+"'" +code['ts_code']+"'"
+            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='daily_basic_ts_code' and TABLE_NAME="+"'" +code['ts_code']+"'"
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
             if df.empty:
                 try:
@@ -141,6 +148,24 @@ class datamodule(object):
                 except :
                     print("err："+code['ts_code'])
                 continue 
+
+    def _fix_otherdb(self,db = 'daily_basic'):
+        sqlcmd=self.mysqlcmd.format(db)
+        yconnect = create_engine(sqlcmd) 
+        
+        lsdays = self.gettradedays(firsttime = 1)
+        for day in lsdays:
+            table = 't'+day
+            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='"+db+"' AND TABLE_NAME="+ table
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+            if df.empty:
+                try:
+                    df = self.pro.query(db,trade_date = day)
+                    pd.io.sql.to_sql(df,table,con=yconnect, schema=database,if_exists='replace') 
+                except :
+                    print("err："+ table)
+                continue 
+
 
 if __name__ == '__main__':
     d = datamodule()
