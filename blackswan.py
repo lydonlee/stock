@@ -18,30 +18,37 @@ class blackswan(object):
     def __init__(self):
         cfg = config.configs.blackswan
         self.blackday = 30
-        self.droprate = 0.1
-        self.periodbyday = 100
+        self.droprate = 0.15
         self.blackswan_list = []
         self.blackswan_csv = cfg.blackswan_csv
         self.blackswan_csv1 = cfg.blackswan_csv1
         self.moniter_csv = cfg.moniter_csv
         self.step = 1
+        self.indicator = 'total_mv'
         self.df = pd.DataFrame()
 
     def moniter(self):
         msql = md.datamodule()
         ts_code_df = msql.getts_code()
-        for i,code in ts_code_df.iterrows():
-            df1 = msql.pull_mysql(db = 'daily_basic_ts_code',limit = self.periodbyday,ts_code = code['ts_code'])
-            if not df1.empty:
-                self.sub_findblackswan(df = df1)
-                print(self.df)
-        try:
-            str = util.dftostring(df)
-            util.sendmail(str)
-            self.df.to_csv(self.moniter_csv,index=False)
+        df = pd.DataFrame()
 
-        except:
-            print("self.df.to_csv failed!!!")
+        for i,code in ts_code_df.iterrows():
+            #取到的数据默认按照日期排序，最近的排在前面
+            df1 = msql.pull_mysql(db = 'daily_basic_ts_code',limit = self.blackday,ts_code = code['ts_code'])
+            if not df1.empty:
+                rate = self._isblackswan(df = df1)
+                if rate > self.droprate:
+                    df1.at[0,'droprate'] = rate
+                    print(df1.loc[0]['droprate'])
+                    print(df1.loc[0]['ts_code'])
+                    df = pd.concat([df,df1.loc[0:0,]],ignore_index = True)
+  
+        if not df.empty:
+            str = util.dftostring(df)
+            df.to_csv(self.moniter_csv,index=False)
+        else:
+            str = '没发现黑天鹅事件！'
+            print(str)
         return 
         
     def train(self):
@@ -132,6 +139,13 @@ class blackswan(object):
             if rate > self.droprate:
                 self.df = pd.concat([self.df,df.loc[i+lastday-1:i+lastday-1,]],ignore_index = True)
 
+    def _isblackswan(self,df):
+            nowin = df.iloc[0][self.indicator]
+            d = df.agg({ self.indicator: ['min', 'max']})
+            max = d.loc['max'][self.indicator]
+            rate = (max - nowin)/max
+            return rate
+  
     def removedupdate(self,df):
         df1 = pd.DataFrame()
         df['trade_date'] = df['trade_date'].astype('int')
@@ -145,23 +159,22 @@ class blackswan(object):
 
     def test_findoneblackswan(self,code = '000001.SZ'):  
         msql = md.datamodule()      
-        df1 = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = code)
-        self.sub_findblackswan(df = df1)
-        df = d.removedupdate(self.df)
-        print(df)
+        df1 = msql.pull_mysql(db = 'daily_basic_ts_code',limit = self.blackday,ts_code = code)
+        self._isblackswan(df = df1)
+        print(df1)
 
 if __name__ == '__main__':
     d = blackswan()
-    m = md.datamodule()
+    #m = md.datamodule()
     #m.updatalldb()
 
     "d.sub_findblackswan('20150101','20190312')"
     "d.sub_getlaterprice()"
     d.moniter()
     #d.train()
-    d.test_findoneblackswan('600703.SH')
-    d.test_findoneblackswan('600519.SH')
-    d.test_findoneblackswan('600887.SH')
+    #d.test_findoneblackswan('000023.SZ')
+    #d.test_findoneblackswan('600519.SH')
+    #d.test_findoneblackswan('600887.SH')
     #df = pd.read_csv(d.blackswan_csv)
     #df = d.removedupdate(df)
     #df.to_csv(d.blackswan_csv1,index=False)

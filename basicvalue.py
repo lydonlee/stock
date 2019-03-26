@@ -69,18 +69,6 @@ class basicvalue(object):
         latestday = msql.getlatestday('daily_basic_ts_code')
         print(latestday)
 
-    def recommand_sum(self):
-        msql = md.datamodule()
-        df = pd.read_csv(self.recommand_basic)
-        df1 = msql.getstock_basic()
-
-        df.set_index(["ts_code"], inplace=True)
-        df1.set_index(["ts_code"], inplace=True)
-
-        df = pd.concat([df,df1],axis=1,join_axes=[df.index])
-  
-        df.to_csv(self.recommand_basic,index = True)
-
 if __name__ == '__main__':
     b = basicvalue()
     msql = md.datamodule()

@@ -72,12 +72,22 @@ class datamodule(object):
                 continue 
             print(code['ts_code'])
             
-        
         yconnect.dispose()
+    #为df增加股票名字，行业等基本信息    
+    def joinnames(self,df):
+        df1 = self._getstock_basic()
 
-    def getstock_basic(self):
+        df.set_index(["ts_code"], inplace=True)
+        df1.set_index(["ts_code"], inplace=True)
+
+        df = pd.concat([df,df1],axis=1,join_axes=[df.index])
+
+        return df
+    
+    def _getstock_basic(self):
         df = self.pro.query('stock_basic',exchange='', list_status='L')
         return df
+
     def gettradedays(self,start_date1='', end_date1='',firsttime = 0):
 
         if firsttime == 1 :

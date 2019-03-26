@@ -2,7 +2,7 @@ import yagmail
 import keyring
 from io import StringIO
 import pandas as pd
-
+#yagmail.register('mygmailusername', 'mygmailpassword')
 def sendmail(mailcontent = 'this is content'):
 
     usrname = "904721093@qq.com"
