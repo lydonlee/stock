@@ -52,7 +52,6 @@ class basicvalue(object):
                 for c in self.col_list:
                     self._appendcol(df = df1,by= c,r =code['ts_code'])
 
-        self.df.iloc[0][0] = 'ts_code'
         self.df.to_csv(self.basic_csv)    
             
     def _appendcol(self,df,by = 'close',r = 0):

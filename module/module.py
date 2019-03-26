@@ -36,7 +36,7 @@ class datamodule(object):
 
         return df
 
-    def push_mysql(self,database = 'daily_basic',start='20180802',end='20180809',firsttime = 0):
+    def _push_mysql(self,database = 'daily_basic',start='20180802',end='20180809',firsttime = 0):
         concmd = self.mysqlcmd.format(database)
         yconnect = create_engine(concmd)
         tradedays_list = self.gettradedays(start,end,firsttime = firsttime)
@@ -52,7 +52,7 @@ class datamodule(object):
 
         yconnect.dispose()
 
-    def push_daily_basic(self,start='20180802',end='20180809',firsttime = 0):
+    def _push_daily_basic(self,start='20180802',end='20180809',firsttime = 0):
         sqlcmd=self.mysqlcmd.format('daily_basic_ts_code')
         yconnect = create_engine(sqlcmd) 
        
@@ -71,8 +71,25 @@ class datamodule(object):
                 print("err："+code['ts_code'])
                 continue 
             print(code['ts_code'])
-            
         yconnect.dispose()
+
+    def _push_dividend(self):
+        sqlcmd=self.mysqlcmd.format('dividend')
+        yconnect = create_engine(sqlcmd) 
+       
+        df1 = self.getts_code()
+
+        for index, code in df1.iterrows():
+            try:
+                df = self.pro.query('dividend',ts_code = code['ts_code'])
+                if not df.empty:
+                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='dividend',if_exists='replace') 
+            except :
+                print("err："+code['ts_code'])
+                continue 
+            print(code['ts_code'])
+        yconnect.dispose()
+
     #为df增加股票名字，行业等基本信息    
     def joinnames(self,df):
         df1 = self._getstock_basic()
@@ -132,9 +149,11 @@ class datamodule(object):
                 print('already the latest db!')
                 continue
             elif db1 == 'daily_basic_ts_code':
-                self.push_daily_basic(start=s,end=now,firsttime=firsttime)
+                self._push_daily_basic(start=s,end=now,firsttime=firsttime)
+            elif db1 == 'dividend':
+                self._push_dividend()
             else:
-                self.push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
+                self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
             self.fix_db()
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  

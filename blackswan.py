@@ -13,6 +13,7 @@ import config
 
 统计黑天鹅后1个月，2个月，3个月股价是否回升及回升的幅度
 统计该策略的成功率及成功幅度
+板块指数，行业指数，历史统计成功率
 '''
 class blackswan(object):
     def __init__(self):
@@ -39,13 +40,12 @@ class blackswan(object):
                 rate = self._isblackswan(df = df1)
                 if rate > self.droprate:
                     df1.at[0,'droprate'] = rate
-                    print(df1.loc[0]['droprate'])
-                    print(df1.loc[0]['ts_code'])
                     df = pd.concat([df,df1.loc[0:0,]],ignore_index = True)
   
         if not df.empty:
             str = util.dftostring(df)
-            df.to_csv(self.moniter_csv,index=False)
+            df = msql.joinnames(df=df)
+            df.to_csv(self.moniter_csv,index=True)
         else:
             str = '没发现黑天鹅事件！'
             print(str)
@@ -164,13 +164,13 @@ class blackswan(object):
         print(df1)
 
 if __name__ == '__main__':
-    d = blackswan()
-    #m = md.datamodule()
-    #m.updatalldb()
+    #d = blackswan()
+    m = md.datamodule()
+    m.updatalldb()
 
     "d.sub_findblackswan('20150101','20190312')"
     "d.sub_getlaterprice()"
-    d.moniter()
+    #d.moniter()
     #d.train()
     #d.test_findoneblackswan('000023.SZ')
     #d.test_findoneblackswan('600519.SH')

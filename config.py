@@ -18,9 +18,9 @@ for path in MODULE_PATH.values():
         sys.path.append(path)
 
 if 'Windows' in platform.uname() :
-    db_func_list = ['daily_basic_ts_code','daily_basic','margin_detail']
+    db_func_list = ['daily_basic_ts_code','daily_basic','margin_detail','dividend']
 else:
-    db_func_list = ['daily_basic_ts_code']
+    db_func_list = ['daily_basic_ts_code','dividend']
     
 configs = {
     'module': {
@@ -37,6 +37,10 @@ configs = {
         'basic_csv'     : os.path.join(MODULE_PATH['data'],'mbasic.csv'),
         'monitor_basic' : os.path.join(MODULE_PATH['data'],'monitor_basic.csv'),
         'recommand_basic':os.path.join(MODULE_PATH['data'],'recommand_basic.csv'),
+    },
+    'dividend':{
+        'dividend_csv'     : os.path.join(MODULE_PATH['data'],'dividend.csv'),
+
     },
 }
 
