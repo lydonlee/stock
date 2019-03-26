@@ -44,7 +44,8 @@ class datamodule(object):
             try:
                 df = self.pro.query(database,trade_date = day)
                 table = 't'+day
-                pd.io.sql.to_sql(df,table,con=yconnect, schema=database,if_exists='replace') 
+                if not df.empty:
+                    pd.io.sql.to_sql(df,table,con=yconnect, schema=database,if_exists='replace') 
             except :
                 print("err："+database+day)
                 continue 
@@ -64,7 +65,8 @@ class datamodule(object):
                 else:
                     df = self.pro.query('daily_basic',ts_code = code['ts_code'],start_date = start,end_date=end)
                 
-                pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='daily_basic_ts_code',if_exists='append') 
+                if not df.empty:
+                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='daily_basic_ts_code',if_exists='append') 
             except :
                 print("err："+code['ts_code'])
                 continue 

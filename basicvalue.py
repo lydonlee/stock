@@ -2,7 +2,7 @@ import pandas as pd
 from module import module as md
 import datetime
 import config
-
+#使用daily_basic，daily_basic_ts_code数据库，
 class basicvalue(object):
     def __init__(self):
         cfg = config.configs.basicvalue
@@ -13,6 +13,7 @@ class basicvalue(object):
         self.monitor_basic = cfg.monitor_basic
         self.rateth = {'closerate':5 ,'pe_ttmrate':5,'pbrate':5,'turnover_rate_frate':5,'ps_ttmrate':5,'total_mvrate':5}
         self.recommand_basic = cfg.recommand_basic
+    
     def moniter(self):
         msql = md.datamodule()
         latestday = msql.getlatestday('daily_basic')
