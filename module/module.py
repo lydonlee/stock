@@ -17,7 +17,7 @@ class datamodule(object):
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd) 
         df = pd.DataFrame()
-        if db == 'daily_basic_ts_code': 
+        if db == 'daily_basic_ts_code' : 
             '以数字开头的数据库名字要用1前边的那个符号引用才能识别'
             if limit != None:
                 sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC limit '+ str(limit) 
@@ -25,6 +25,9 @@ class datamodule(object):
                 sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC'
             else:
                 sql_cmd = 'select * from `'+ts_code + '`' +'where trade_date = '+date
+        elif db == 'dividend':
+            sql_cmd = 'select * from `'+ts_code + '`'
+
         else:
             sql_cmd = 'select * from '+'t'+ date
 
@@ -136,7 +139,7 @@ class datamodule(object):
         df = self.pro.query('stock_basic',exchange='', list_status='L', fields='ts_code')
         return df
 
-    def updatalldb(self,firsttime = 0):
+    def updatealldb(self,firsttime = 0):
         now = datetime.datetime.now().strftime('%Y%m%d')
         for db1 in self.db_func_list:
             try:
@@ -154,28 +157,32 @@ class datamodule(object):
                 self._push_dividend()
             else:
                 self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
-            self.fix_db()
+            self.fix_db(db = db1)
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
     def fix_db(self,db = 'daily_basic_ts_code'):
-        if (db == 'daily_basic_ts_code'):
-            self._fix_daily_basic_ts_code()
+        if (db == 'daily_basic_ts_code' or db == 'dividend'):
+            self._fix_by_ts_code(sqldb=db)
         else:
             self._fix_otherdb(db)
 
-    def _fix_daily_basic_ts_code(self):
-        sqlcmd=self.mysqlcmd.format('daily_basic_ts_code')
+    def _fix_by_ts_code(self,sqldb):
+        if sqldb == 'daily_basic_ts_code':
+            tsdb = 'daily_basic'
+        else:
+            tsdb = sqldb
+        sqlcmd=self.mysqlcmd.format(sqldb)
         yconnect = create_engine(sqlcmd) 
 
         df1 = self.getts_code()
      
         for index, code in df1.iterrows():
-            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='daily_basic_ts_code' and TABLE_NAME="+"'" +code['ts_code']+"'"
+            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='" + sqldb + "' and TABLE_NAME="+"'" + code['ts_code'] + "'"
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
             if df.empty:
                 try:
-                    df = self.pro.query('daily_basic',ts_code = code['ts_code'])
-                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='daily_basic_ts_code',if_exists='replace') 
+                    df = self.pro.query(tsdb,ts_code = code['ts_code'])
+                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema=sqldb,if_exists='replace') 
                 except :
                     print("err："+code['ts_code'])
                 continue 
