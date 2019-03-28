@@ -52,7 +52,7 @@ class basicvalue(object):
                 for c in self.col_list:
                     self._appendcol(df = df1,by= c,r =code['ts_code'])
 
-        self.df.to_csv(self.basic_csv)    
+        self.df.to_csv(self.basic_csv,index_value='ts_code')    
             
     def _appendcol(self,df,by = 'close',r = 0):
         collow = by +'low'
