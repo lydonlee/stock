@@ -25,16 +25,15 @@ class datamodule(object):
                 sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC'
             else:
                 sql_cmd = 'select * from `'+ts_code + '`' +'where trade_date = '+date
-        elif db == 'dividend':
+        elif db == 'dividend' or db == 'income':
             sql_cmd = 'select * from `'+ts_code + '`'
-
         else:
             sql_cmd = 'select * from '+'t'+ date
 
         try:
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
         except:
-            print("err：pull_mysql:"+sql_cmd)
+            print("err：pull_mysql:"+db+sql_cmd)
         yconnect.dispose()
 
         return df
@@ -76,17 +75,17 @@ class datamodule(object):
             print(code['ts_code'])
         yconnect.dispose()
 
-    def _push_dividend(self):
-        sqlcmd=self.mysqlcmd.format('dividend')
+    def _push_by_code(self,db):
+        sqlcmd=self.mysqlcmd.format(db)
         yconnect = create_engine(sqlcmd) 
        
         df1 = self.getts_code()
 
         for index, code in df1.iterrows():
             try:
-                df = self.pro.query('dividend',ts_code = code['ts_code'])
+                df = self.pro.query(db,ts_code = code['ts_code'])
                 if not df.empty:
-                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='dividend',if_exists='replace') 
+                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema=db,if_exists='replace') 
             except :
                 print("err："+code['ts_code'])
                 continue 
@@ -153,8 +152,8 @@ class datamodule(object):
                 continue
             elif db1 == 'daily_basic_ts_code':
                 self._push_daily_basic(start=s,end=now,firsttime=firsttime)
-            elif db1 == 'dividend':
-                self._push_dividend()
+            elif db1 == 'dividend' or 'income':
+                self._push_by_code(db1)
             else:
                 self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
             self.fix_db(db = db1)
