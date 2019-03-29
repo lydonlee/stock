@@ -16,7 +16,7 @@ class FCFF(object):
         df = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         df = self._getdata(ts_code = '600519.SH',template = df)
         df = self._processdata(df=df)
-        df.to_csv(self.FCFF_csv)
+        df.to_csv(self.FCFF_csv,encoding='utf_8_sig')
     #获取利润等数据，存入以下行：8:12，22，32，33，34
     def _getdata(self,ts_code,template):
         
@@ -29,11 +29,13 @@ class FCFF(object):
         for i in range(self.thisyear - 7,self.thisyear):
             end_date = str(i)+'1231'
             end_date1 = str(i+1)+'1231'
-            y = 'y'+str(i - self.thisyear)
+            y = 'y'+str(i - self.thisyear+1)
 
             #8 :净利润：income：n_income
+            print(end_date)
             df1 = df[df['end_date'] == end_date]
             if not df1.empty:
+                print(y)
                 template.at[8,y] = df1.iloc[0]['n_income']
             
             #9 +折旧和摊销cashflow，depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
@@ -60,24 +62,33 @@ class FCFF(object):
 
 
     def _processdata(self,df):
-        #处理第13行
-        df1 = df.loc[8:12,'y-7':'y0'] 
-        df.at[13,'y-7':'y0'] = df1.apply('sum',axis=0)
-        for i in range(5):
-            y0 = 'y'+str(i)
-            y1 = 'y'+str(i+1)
-            df.at[13,y1] = df.loc[13][y0]*(1+df.loc[22][y1])
+
+        
 
         #处理第14行
-
-        df.at[14,'y-3'] = df.loc[8]['y-3']/df.loc[8]['y-4']-1
-        df.at[14,'y-2'] = df.loc[8]['y-2']/df.loc[8]['y-3']-1
-        df.at[14,'y-1'] = df.loc[8]['y-1']/df.loc[8]['y-2']-1
+        for i in range(-6,1):
+            y0 = 'y'+str(i-1)
+            y1 = 'y'+str(i)
+            df.at[14,y1] = df.loc[8][y1]/df.loc[8][y0]-1
+        
     
         #处理第19行
         for i in range(-7,6):
             y = 'y'+str(i)
             df.at[19,y] = df.loc[13][y]*df.loc[18][y]
+        #处理第22行，用过去三年平均增长率预测未来增长率
+        for i in range(1,6):
+            y = 'y'+str(i)
+            df.at[22,y] = (df.loc[14]['y0']+df.loc[14]['y-1']+df.loc[14]['y-2'])/3
+
+        #处理第13行y-7:y0
+        df1 = df.loc[8:12,'y-7':'y0'] 
+        df.at[13,'y-7':'y0'] = df1.apply('sum',axis=0)
+        for i in range(0,5):
+            y0 = 'y'+str(i)
+            y1 = 'y'+str(i+1)
+            df.at[13,y1] = df.loc[13][y0]*(1+df.loc[22][y1])
+
         #处理第24行
         t = df.loc[19:19,'y-4':'y0'].apply('sum',axis=1)
         df.at[24,'y-6'] = t.iloc[0]
@@ -107,5 +118,6 @@ class FCFF(object):
 if __name__ == '__main__':
     f = FCFF()
     f.build()
+    
     
 
