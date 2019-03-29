@@ -6,11 +6,13 @@ class FCFF(object):
     def __init__(self):
         cfg = config.configs.FCFF
         self.template = cfg.FCFF_template
-        #self.dic_incrate = {'ever':0.03,'y1':0.1,'y2':0.09,'y3':0.08,'y4':0.07,'y5':0.06}
-    def build(self):
-        #需要后续处理下面这些行：8:12，14，22，32，33，34
 
+    #获取利润等数据，存入以下行：8:12，14，22，32，33，34
+    def _getdata(self):
         df = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
+        #8 :净利润：income：n_income
+        #9 折旧和摊销cashflow，depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
+    def _processdata(self,df):
         #处理第13行
         df1 = df.loc[8:12,'y-7':'y0'] 
         df.at[13,'y-7':'y0'] = df1.apply('sum',axis=0)
