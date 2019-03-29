@@ -1,6 +1,5 @@
 import pandas as pd
 from module import module as md
-import datetime
 import config
 #使用daily_basic，daily_basic_ts_code数据库，
 class basicvalue(object):

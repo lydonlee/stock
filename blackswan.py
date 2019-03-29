@@ -1,6 +1,5 @@
 import pandas as pd
 from module import module as md
-import datetime
 import csv
 import shutil
 import os

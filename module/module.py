@@ -25,7 +25,7 @@ class datamodule(object):
                 sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC'
             else:
                 sql_cmd = 'select * from `'+ts_code + '`' +'where trade_date = '+date
-        elif db == 'dividend' or db == 'income':
+        elif db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet':
             sql_cmd = 'select * from `'+ts_code + '`'
         else:
             sql_cmd = 'select * from '+'t'+ date
@@ -152,7 +152,7 @@ class datamodule(object):
                 continue
             elif db1 == 'daily_basic_ts_code':
                 self._push_daily_basic(start=s,end=now,firsttime=firsttime)
-            elif db1 == 'dividend' or 'income':
+            elif db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet':
                 self._push_by_code(db1)
             else:
                 self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
@@ -160,10 +160,10 @@ class datamodule(object):
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
     def fix_db(self,db = 'daily_basic_ts_code'):
-        if (db == 'daily_basic_ts_code' or db == 'dividend'):
+        if (db == 'daily_basic_ts_code' or db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet'):
             self._fix_by_ts_code(sqldb=db)
         else:
-            self._fix_otherdb(db)
+            self._fix_by_time(db)
 
     def _fix_by_ts_code(self,sqldb):
         if sqldb == 'daily_basic_ts_code':
@@ -186,7 +186,7 @@ class datamodule(object):
                     print("err："+code['ts_code'])
                 continue 
 
-    def _fix_otherdb(self,db = 'daily_basic'):
+    def _fix_by_time(self,db = 'daily_basic'):
         sqlcmd=self.mysqlcmd.format(db)
         yconnect = create_engine(sqlcmd) 
         
