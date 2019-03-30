@@ -13,17 +13,17 @@ class FCFF(object):
         self.FCFF_csv = cfg.FCFF_csv
         self.monitor_csv = cfg.monitor_FCFF_csv
         self.thisyear = int(datetime.datetime.now().strftime('%Y'))
-    def monitor(self,code = None):
+    def monitor(self,pcode = None):
         msql = md.datamodule()
         latestday = msql.getlatestday('daily_basic')
-        dfm = pd.DataFrame()()
-        if code != None :
+        dfm = pd.DataFrame()
+        if pcode != None :
             try:
                 dfm = pd.read_csv(self.monitor_csv)
                 if not dfm.empty:
                     #已经是最新的数据了，直接返回需要的值
                     if dfm.iloc[0]['lastupdate'] == latestday
-                        return dfm[dfm['ts_code'] == code]
+                        return dfm[dfm['ts_code'] == pcode]
             except:
                 print('没找到:'+self.monitor_csv,'重新建立')
 
@@ -35,9 +35,10 @@ class FCFF(object):
         df_basic['市场高估比率'] = (df_now['total_mv']- df_basic['evaluation'])/df_now['total_mv']
 
         df_basic = msql.joinnames(df_basic)
-        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig')
+        df_basic.sort_values('市场高估比率',ascending = True) 
+        df_basic.to_csv(self.monitor_csv,index_value='ts_code',encoding='utf_8_sig')
 
-        return df_basic[df_basic['ts_code'] == code]
+        return df_basic[df_basic['ts_code'] == pcode]
         
 
     def build(self):
@@ -68,7 +69,7 @@ class FCFF(object):
             print(df1)
             df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
 
-        df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig')
+        df_rslt.to_csv(self.FCFF_csv,index_value='ts_code',encoding='utf_8_sig')
 
 
     def buildone(self,df,code):

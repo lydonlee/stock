@@ -9,15 +9,25 @@ class basicvalue(object):
         self.df = pd.DataFrame()
         self.col_list = ['close','pe_ttm','pb','turnover_rate_f','ps_ttm','total_mv']
         self.basic_csv = cfg.basic_csv
-        self.monitor_basic = cfg.monitor_basic
+        self.monitor_csv = cfg.monitor_basic
         self.rateth = {'closerate':5 ,'pe_ttmrate':5,'pbrate':5,'turnover_rate_frate':5,'ps_ttmrate':5,'total_mvrate':5}
         self.recommand_basic = cfg.recommand_basic
     
-    def moniter(self):
+    def moniter(self,pcode= None):
         msql = md.datamodule()
         latestday = msql.getlatestday('daily_basic')
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
         #df_now.set_index(["ts_code"], inplace=True)
+        df_basic = pd.DataFrame()
+        if code != None :
+            try:
+                df_basic = pd.read_csv(self.monitor_csv)
+                if not df_basic.empty:
+                    #已经是最新的数据了，直接返回需要的值
+                    if df_basic.iloc[0]['lastupdate'] == latestday
+                        return df_basic[df_basic['ts_code'] == pcode]
+            except:
+                print('没找到:'+self.monitor_csv,'重新建立')
 
         #读取过去几年最高价和最低价记录
         df_basic = pd.read_csv(self.basic_csv)
@@ -31,7 +41,9 @@ class basicvalue(object):
             df_basic[col] = df_now[col]
             df_basic[colrate] = (df_now[col] - df_basic[collow])/(df_basic[colhigh]-df_basic[collow])*100
         
-        df_basic.to_csv(self.monitor_basic,encoding='utf_8_sig')
+        df_basic['lastupdate'] = latestday
+        df_basic.to_csv(self.monitor_csv,index_value='ts_code',encoding='utf_8_sig')
+        return df_basic[df_basic['ts_code'] == pcode]
 
     def recommand(self):
         dfr = pd.DataFrame()
@@ -40,7 +52,7 @@ class basicvalue(object):
             df1 = df[df[key] < value]
             df1[key+'r'] = 1
             dfr = pd.concat([dfr,df1],ignore_index = False,sort=False)
-        dfr.to_csv(self.recommand_basic,index = False)
+        dfr.to_csv(self.recommand_basic,index_value='ts_code',encoding='utf_8_sig')
 
     def builddf(self):
         msql = md.datamodule()
@@ -51,7 +63,7 @@ class basicvalue(object):
                 for c in self.col_list:
                     self._appendcol(df = df1,by= c,r =code['ts_code'])
 
-        self.df.to_csv(self.basic_csv,index_value='ts_code')    
+        self.df.to_csv(self.basic_csv,index_value='ts_code',encoding='utf_8_sig')    
             
     def _appendcol(self,df,by = 'close',r = 0):
         collow = by +'low'
