@@ -1,6 +1,7 @@
 import tushare as ts
 import pandas as pd  
 from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
 import datetime
 import csv
 import config
@@ -160,7 +161,7 @@ class datamodule(object):
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
     def fix_db(self,db = 'daily_basic_ts_code'):
-        if (db == 'daily_basic_ts_code' or db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet'):
+        if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet'):
             self._fix_by_ts_code(sqldb=db)
         else:
             self._fix_by_time(db)
@@ -202,12 +203,23 @@ class datamodule(object):
                 except :
                     print("err："+ table)
                 continue 
+    def _createdb(self,db):
+        #选一个已经存在的数据库先连上
+        concmd = self.mysqlcmd.format('performance_schema')
+        yconnect = create_engine(concmd) 
+        conn = yconnect.connect()
+        conn.execute("commit")
+
+        sqlcmd = "create database " + db
+        conn.execute(sqlcmd)
+        conn.close()
 
 
 if __name__ == '__main__':
     d = datamodule()
     "d.push_mysql(database = 'daily_basic',start='20100101',end='20151231')"
-    d.updatalldb()
+    #d.updatalldb()
+    d._createdb('income')
     "print(d.datanotinmysql(db = 'daily_basic_ts_code',wstart = '20190101',wend='20190313'))"
     "df = d.pull_mysql(db = 'daily_basic_ts_code',date = '201706030',ts_code = '000004.SZ')"
 

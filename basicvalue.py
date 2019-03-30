@@ -31,7 +31,7 @@ class basicvalue(object):
             df_basic[col] = df_now[col]
             df_basic[colrate] = (df_now[col] - df_basic[collow])/(df_basic[colhigh]-df_basic[collow])*100
         
-        df_basic.to_csv(self.monitor_basic)
+        df_basic.to_csv(self.monitor_basic,encoding='utf_8_sig')
 
     def recommand(self):
         dfr = pd.DataFrame()
