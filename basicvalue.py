@@ -86,7 +86,7 @@ if __name__ == '__main__':
     #df = msql.pull_mysql(db = 'daily_basic_ts_code',limit = b.periodbyday,ts_code = '300750.SZ')
     #b._appendcol(df,by = 'close',r = '300750.SZ')
     #b.testlatestday()
-    msql.fix_db(db = 'cashflow')
+    msql.fix_db(db = 'balancesheet')
     #df.to_csv(b.recommand_basic)
     #b.builddf()
     #b.moniter()
