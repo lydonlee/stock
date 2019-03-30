@@ -96,9 +96,11 @@ class datamodule(object):
     #为df增加股票名字，行业等基本信息    
     def joinnames(self,df):
         df1 = self._getstock_basic()
+        df1.set_index(["ts_code"], inplace=True,drop = True)
 
-        df.set_index(["ts_code"], inplace=True)
-        df1.set_index(["ts_code"], inplace=True)
+        if df.index.name != 'ts_code':
+            df.set_index(["ts_code"], inplace=True,drop = True)
+
 
         df = pd.concat([df,df1],axis=1,join_axes=[df.index])
 
@@ -207,11 +209,11 @@ class datamodule(object):
         #选一个已经存在的数据库先连上
         concmd = self.mysqlcmd.format('performance_schema')
         yconnect = create_engine(concmd) 
-        conn = yconnect.connect()
-        conn.execute("commit")
+        #conn = yconnect.connect()
+        #conn.execute("commit")
 
         sqlcmd = "create database " + db
-        conn.execute(sqlcmd)
+        yconnect.execute(sqlcmd)
         conn.close()
 
 

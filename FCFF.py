@@ -19,28 +19,29 @@ class FCFF(object):
         dfm = pd.DataFrame()
         if pcode != None :
             try:
-                dfm = pd.read_csv(self.monitor_csv,index_col = 'ts_code')
+                dfm = pd.read_csv(self.monitor_csv,index_col = 0)
                 if not dfm.empty:
                     #已经是最新的数据了，直接返回需要的值
-                    if dfm.iloc[0]['lastupdate'] == latestday:
-                        return dfm[dfm['ts_code'] == pcode]
+                    if dfm.iloc[0]['lastupdate'] == int(latestday):
+                        return dfm.loc[pcode]
             except:
                 print('没找到:'+self.monitor_csv,'重新建立')
 
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
-        df_basic = pd.read_csv(self.FCFF_csv,index_col = 'ts_code')
+        df_now.set_index(["ts_code"], inplace=True,drop = True) 
+
+        df_basic = pd.read_csv(self.FCFF_csv,index_col = 0)
 
         df_basic['lastupdate'] = latestday
-        df_basic['total_mv'] = df_now['total_mv']
-        df_basic['市场高估比率'] = (df_now['total_mv']- df_basic['evaluation'])/df_now['total_mv']
+        df_basic['total_mv'] = df_now['total_mv']*10000
+        df_basic['市场高估比率'] = (df_now['total_mv']*10000- df_basic['evaluation'])/(df_now['total_mv']*10000)
 
         df_basic = msql.joinnames(df_basic)
         df_basic.sort_values('市场高估比率',ascending = True) 
-        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig')
-
-        return df_basic[df_basic['ts_code'] == pcode]
+        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',,index = False)
+        if pcode != None:
+            return df_basic.loc[pcode]
         
-
     def build(self):
         df_rslt = pd.DataFrame()
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
@@ -68,11 +69,11 @@ class FCFF(object):
             df1 = pd.DataFrame.from_dict(dic)
             df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
 
-        df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig')
+        df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig',index = False)
 
     def _testbuild(self):
         df = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
-        df.to_csv(self.monitor_csv,encoding='utf_8_sig')
+        df.to_csv(self.monitor_csv,encoding='utf_8_sig',index = False)
         
     def buildone(self,df,code):
         df = self._getdata(ts_code = code,template = df)
@@ -188,9 +189,11 @@ class FCFF(object):
 if __name__ == '__main__':
     f = FCFF()
     #f._testbuild()
-    f.build()
+    #f.build()
     #msql._createdb('test1')
-    f.monitor()
+    
+    d = f.monitor('000002.SZ')
+    print(d)
     
     
 
