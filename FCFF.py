@@ -19,16 +19,16 @@ class FCFF(object):
         dfm = pd.DataFrame()
         if pcode != None :
             try:
-                dfm = pd.read_csv(self.monitor_csv)
+                dfm = pd.read_csv(self.monitor_csv,index_col = 'ts_code')
                 if not dfm.empty:
                     #已经是最新的数据了，直接返回需要的值
-                    if dfm.iloc[0]['lastupdate'] == latestday
+                    if dfm.iloc[0]['lastupdate'] == latestday:
                         return dfm[dfm['ts_code'] == pcode]
             except:
                 print('没找到:'+self.monitor_csv,'重新建立')
 
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
-        df_basic = pd.read_csv(self.FCFF_csv)
+        df_basic = pd.read_csv(self.FCFF_csv,index_col = 'ts_code')
 
         df_basic['lastupdate'] = latestday
         df_basic['total_mv'] = df_now['total_mv']
@@ -36,7 +36,7 @@ class FCFF(object):
 
         df_basic = msql.joinnames(df_basic)
         df_basic.sort_values('市场高估比率',ascending = True) 
-        df_basic.to_csv(self.monitor_csv,index_value='ts_code',encoding='utf_8_sig')
+        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig')
 
         return df_basic[df_basic['ts_code'] == pcode]
         
@@ -52,7 +52,7 @@ class FCFF(object):
                 continue
             dic = {}
 
-            dic['code'] = [code['ts_code']]
+            dic['ts_code'] = [code['ts_code']]
             dic['evaluation'] = [df1['y-6'][37]]
             dic['sus_grow_rate'] = [df1['y-6'][22]]
             dic['y1_grow_rate'] = [df1['y1'][22]]
@@ -66,17 +66,18 @@ class FCFF(object):
             dic['y-2_grow_rate'] = [df1['y-2'][14]]
     
             df1 = pd.DataFrame.from_dict(dic)
-            print(df1)
             df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
 
-        df_rslt.to_csv(self.FCFF_csv,index_value='ts_code',encoding='utf_8_sig')
+        df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig')
 
-
+    def _testbuild(self):
+        df = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
+        df.to_csv(self.monitor_csv,encoding='utf_8_sig')
+        
     def buildone(self,df,code):
         df = self._getdata(ts_code = code,template = df)
         if df.empty:
             return df
-
         df = self._processdata(df=df)
         return df
         #df.to_csv(self.FCFF_csv,encoding='utf_8_sig')
@@ -87,7 +88,7 @@ class FCFF(object):
         df_cash = msql.pull_mysql(db = 'cashflow',ts_code = ts_code)
         df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = ts_code)
         if df.empty or df_cash.empty or df_blc.empty :
-            return df
+            return pd.DataFrame()
         for i in range(self.thisyear - 7,self.thisyear):
             end_date = str(i)+'1231'
             end_date1 = str(i+1)+'1231'
@@ -101,17 +102,23 @@ class FCFF(object):
             #9 +折旧和摊销cashflow，depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
             df1 = df_cash[df_cash['end_date'] == end_date]
             if not df1.empty:
-                template.at[9,y] = df1.iloc[0]['depr_fa_coga_dpba'] + df1.iloc[0]['amort_intang_assets'] + df1.iloc[0]['lt_amort_deferred_exp']
-            #10 +支付的利息 cashflow:c_pay_dist_dpcp_int_exp
-                template.at[10,y] = df1.iloc[0]['c_pay_dist_dpcp_int_exp']
-            #11 -资本性支出：cashflow：c_pay_acq_const_fiolta
-                template.at[11,y] = df1.iloc[0]['c_pay_acq_const_fiolta']*(-1)
+                #可能会因为数据缺失导致异常
+                try:
+                    template.at[9,y] = df1.iloc[0]['depr_fa_coga_dpba'] + df1.iloc[0]['amort_intang_assets'] + df1.iloc[0]['lt_amort_deferred_exp']
+                    #10 +支付的利息 cashflow:c_pay_dist_dpcp_int_exp
+                    template.at[10,y] = df1.iloc[0]['c_pay_dist_dpcp_int_exp']
+                    #11 -资本性支出：cashflow：c_pay_acq_const_fiolta
+                    template.at[11,y] = df1.iloc[0]['c_pay_acq_const_fiolta']*(-1)
 
-            #12 营运资金变动：balancesheet：y0（total_cur_assets - total_cur_liab）- y1(total_cur_assets - total_cur_liab)
-                df1 = df_blc[df_blc['end_date'] == end_date]
-                df2 = df_blc[df_blc['end_date'] == end_date1]
-                if (not df1.empty) and (not df2.empty) :
-                    template.at[12,y] = df1.iloc[0]['total_cur_assets'] - df1.iloc[0]['total_cur_liab'] -(df2.iloc[0]['total_cur_assets'] - df2.iloc[0]['total_cur_liab'])
+                    #12 营运资金变动：balancesheet：y0（total_cur_assets - total_cur_liab）- y1(total_cur_assets - total_cur_liab)
+                    df1 = df_blc[df_blc['end_date'] == end_date]
+                    df2 = df_blc[df_blc['end_date'] == end_date1]
+                    if (not df1.empty) and (not df2.empty) :
+                        template.at[12,y] = df1.iloc[0]['total_cur_assets'] - df1.iloc[0]['total_cur_liab'] -(df2.iloc[0]['total_cur_assets'] - df2.iloc[0]['total_cur_liab'])
+                except:
+                    print(ts_code+'数据缺失')
+                    return pd.DataFrame()
+
         #22永续增长率设为gdp
         template.at[22,'y-6'] = SUSTAINABLE_GROWTH_RATE
         #32，33，34带息负债，非经营负债，少数股东权益设为0
@@ -180,10 +187,10 @@ class FCFF(object):
 
 if __name__ == '__main__':
     f = FCFF()
-    msql = md.datamodule()
-    msql.updatealldb()
+    #f._testbuild()
+    f.build()
     #msql._createdb('test1')
-    #f.monitor()
+    f.monitor()
     
     
 

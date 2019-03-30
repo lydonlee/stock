@@ -19,12 +19,12 @@ class basicvalue(object):
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
         #df_now.set_index(["ts_code"], inplace=True)
         df_basic = pd.DataFrame()
-        if code != None :
+        if pcode != None :
             try:
                 df_basic = pd.read_csv(self.monitor_csv)
                 if not df_basic.empty:
                     #已经是最新的数据了，直接返回需要的值
-                    if df_basic.iloc[0]['lastupdate'] == latestday
+                    if df_basic.iloc[0]['lastupdate'] == latestday:
                         return df_basic[df_basic['ts_code'] == pcode]
             except:
                 print('没找到:'+self.monitor_csv,'重新建立')
@@ -42,7 +42,7 @@ class basicvalue(object):
             df_basic[colrate] = (df_now[col] - df_basic[collow])/(df_basic[colhigh]-df_basic[collow])*100
         
         df_basic['lastupdate'] = latestday
-        df_basic.to_csv(self.monitor_csv,index_value='ts_code',encoding='utf_8_sig')
+        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig')
         return df_basic[df_basic['ts_code'] == pcode]
 
     def recommand(self):
@@ -52,7 +52,7 @@ class basicvalue(object):
             df1 = df[df[key] < value]
             df1[key+'r'] = 1
             dfr = pd.concat([dfr,df1],ignore_index = False,sort=False)
-        dfr.to_csv(self.recommand_basic,index_value='ts_code',encoding='utf_8_sig')
+        dfr.to_csv(self.recommand_basic,encoding='utf_8_sig')
 
     def builddf(self):
         msql = md.datamodule()
@@ -63,7 +63,7 @@ class basicvalue(object):
                 for c in self.col_list:
                     self._appendcol(df = df1,by= c,r =code['ts_code'])
 
-        self.df.to_csv(self.basic_csv,index_value='ts_code',encoding='utf_8_sig')    
+        self.df.to_csv(self.basic_csv,encoding='utf_8_sig')    
             
     def _appendcol(self,df,by = 'close',r = 0):
         collow = by +'low'
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     #df = msql.pull_mysql(db = 'daily_basic_ts_code',limit = b.periodbyday,ts_code = '300750.SZ')
     #b._appendcol(df,by = 'close',r = '300750.SZ')
     #b.testlatestday()
-    msql.fix_db(db = 'dividend')
+    msql.fix_db(db = 'cashflow')
     #df.to_csv(b.recommand_basic)
     #b.builddf()
     #b.moniter()
