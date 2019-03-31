@@ -11,6 +11,7 @@ MODULE_PATH = {}
 MODULE_PATH['backtests'] = os.path.join(ROOT_PATH, 'backtests')
 MODULE_PATH['module'] = os.path.join(ROOT_PATH, 'module')
 MODULE_PATH['data'] = os.path.join(ROOT_PATH, 'data')
+MODULE_PATH['train_FCFF'] = os.path.join(MODULE_PATH['data'], 'train_FCFF')
 
 # 添加到环境变量中
 for path in MODULE_PATH.values():
@@ -46,7 +47,7 @@ configs = {
         'FCFF_csv'      : os.path.join(MODULE_PATH['data'],'FCFF.csv'),
         'FCFF_template' : os.path.join(MODULE_PATH['data'],'template.xls'),
         'monitor_FCFF_csv':os.path.join(MODULE_PATH['data'],'monitor_FCFF.csv'),
-
+        'logfile_path'  :os.path.join(MODULE_PATH['data'],'log.txt'),
     },
 }
 

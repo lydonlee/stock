@@ -2,7 +2,7 @@ import yagmail
 import keyring
 from io import StringIO
 import pandas as pd
-#yagmail.register('mygmailusername', 'mygmailpassword')
+#yagmail.register('904721093@qq.com', 'pvlatlwgwebqbbbh')
 def sendmail(mailcontent = 'this is content'):
 
     usrname = "904721093@qq.com"
@@ -16,6 +16,7 @@ def dftostring(df):
     return df_string.read()
 
 def testdf():
+    df = pd.DataFrame(np.random.randn(4,4),index = list('ABCD'),columns=list('OPKL'))
     d = {'col1': [1, 2], 'col2': [3, 4]}
     df = pd.DataFrame.from_dict(d)
     return df
