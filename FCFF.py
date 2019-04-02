@@ -8,14 +8,14 @@ import matplotlib.pyplot as plt
 import os
 import math
 import logging
-
+from threading import Thread
 SUSTAINABLE_GROWTH_RATE = 0.06
 
 def _fun(x):
-    if x >= 3:
-        return 3
-    elif x<=-3:
-        return -3
+    if x >= 5:
+        return 5
+    elif x<=-5:
+        return -5
     return x
 
 class FCFF(object):
@@ -42,6 +42,82 @@ class FCFF(object):
         except:
             print('没找到:'+self.monitor_csv,'请重新调用monitor')
             return pd.DataFrame()
+    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为股价相对最近一次财报日的涨幅
+    #后续要考虑财报公布日期的因素
+    def monitor_for_train(self):
+        msql = md.datamodule()
+        ts_code_df = msql.getts_code()
+        l = len(ts_code_df)
+        l0 = round(l/4)
+        df1 = ts_code_df.iloc[0:l0]
+        df2 = ts_code_df.iloc[l0:l0*2]
+        df3 = ts_code_df.iloc[l0*2:l0*3]
+        df4 = ts_code_df.iloc[l0*3:l]
+
+        p1 = Thread(target=self._tread_monitor, args=(df1,))
+        p2 = Thread(target=self._tread_monitor, args=(df2,))
+        p3 = Thread(target=self._tread_monitor, args=(df3,))
+        p4= Thread(target=self._tread_monitor, args=(df4,))
+
+        p1.start()
+        p2.start()
+        p3.start()
+        p4.start()
+        
+    def _tread_monitor(self,df):
+        print('start thread')
+        for i,code in df.iterrows():
+            self._monitor_for_train(pcode = code['ts_code'])
+
+    def _monitor_for_train(self,pcode = None):
+        msql = md.datamodule()
+        #latestday = msql.getlatestday('daily_basic')
+        monitor_path = self._trainpath('monitor_'+pcode)
+        evl_path = self._trainpath(pcode)
+        X_col = 'X'
+        Y_col = 'Y'
+        #dfm = pd.DataFrame()
+        try:
+            df_evl = pd.read_csv(evl_path)
+        except:
+            print('没有build该文件:'+pcode)
+            return
+        dfm = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode)
+        dfm[X_col] = 0
+        dfm[Y_col] = 0
+        dfm['evaluation'] = 0
+
+        dfm['trade_date'] = dfm['trade_date'].apply(lambda x:int(x))
+        dfm = dfm.drop_duplicates('trade_date')
+        dfm.set_index(["trade_date"], inplace=True,drop = False) 
+        
+        
+
+        end_date1 = '19950101'
+        end_date2 = '19950101'
+        #遍历每个财报日
+     
+        for i,row in df_evl.iterrows():
+            end_date1 = end_date2
+            end_date2 = row['end_date']
+            df = dfm[(dfm['trade_date']>int(end_date1)) & (dfm['trade_date']<int(end_date2))]
+            if df.empty:
+                continue
+            l = len(df)
+            s = df.iloc[0]['trade_date']
+            e = df.iloc[l-1]['trade_date']   
+            dfm.loc[s:e,'evaluation'] = row['evaluation']    
+
+            #df[Y_col] = (df['total_mv'] - df.iloc[0]['total_mv']) / df.iloc[0]['total_mv']
+            dfm.loc[s:e,Y_col] = (df['total_mv'] - df.iloc[0]['total_mv']) / df.iloc[0]['total_mv']
+
+        dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
+
+        #dfm = msql.joinnames(df_basic)
+        #dfm = dfm.sort_values('市场低估比率',ascending = False) 
+        dfm[X_col] = dfm['市场低估比率'].apply(lambda x: _fun(x))
+
+        dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
     #用每天的数据和季度估值做比较，每天调用    
     def monitor(self,pcode = None):
@@ -153,10 +229,10 @@ class FCFF(object):
                 try:
                     template.loc[8,y] = dfq3.iloc[0]['n_income'] + dflq12.iloc[0]['n_income'] - dflq3.iloc[0]['n_income']
                 except:
-                    logging.debug('净利润数据缺失')
+                    logging.debug(q3+'净利润数据缺失')
                     continue
             else:
-                logging.debug('净利润数据为空')
+                logging.debug(q3+'净利润数据为空')
                 continue
                
             #9 +折旧和摊销cashflow，depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
@@ -280,13 +356,13 @@ class FCFF(object):
         return df
 
     def plot(self):
-        dfm = pd.read_csv(self.monitor_csv,index_col = None)
-        df = dfm.loc[300:3000,'市场高估比率']
-        print(df)
+        monitor_path = self._trainpath('monitor_'+'000002.SZ')
+        dfm = pd.read_csv(monitor_path,index_col = None)
+        
         #df = dfm.loc['300287.SZ':'603881.SH','市场高估比率']
-        df.plot.kde()
+        #df.plot.kde()
         #plt.savefig('D:\test.png')
-        #df.plot(x='x',y='市场高估比率',kind = 'density')#'scatter')
+        dfm.plot(x='X',y='Y',kind = 'scatter')
      
         plt.show()
 
@@ -295,7 +371,6 @@ class FCFF(object):
         return os.path.join(config.MODULE_PATH['train_FCFF'], fpath)
 
     def _testbuild(self):
-        '000010.SZ'
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         df = self._buildone(df =df_template, code = '600519.SH',pdate = '20181231')
         file = self._trainpath('test.csv')
@@ -303,8 +378,9 @@ class FCFF(object):
 if __name__ == '__main__':
     f = FCFF()
     #f._testbuild()
-    f.build()
-    #msql._createdb('test1')
+    #f.build()
+    #f.monitor_for_train('000002.SZ')
+    f.monitor_for_train()
     #f.plot()
     #d = f.monitor('000002.SZ')
     #print(d)
