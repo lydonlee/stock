@@ -43,19 +43,20 @@ class FCFF(object):
             print('没找到:'+self.monitor_csv,'请重新调用monitor')
             return pd.DataFrame()
 
-    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对财报日Y_fc_day的涨幅
-    def monitor_for_train(self,pcode = None,Y_day,Y_fc_day):
+    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对上一次财报日的涨幅
+    #后续要考虑财报公布日期的因素
+    def monitor_for_train(self,pcode = None):
         if Y_day <= Y_fc_day:
             return
         msql = md.datamodule()
         #latestday = msql.getlatestday('daily_basic')
         monitor_path = self._trainpath('monitor_'+pcode)
         evl_path = self._trainpath(pcode)
-
-        Y_col = str(Y_day)+'_'+Y_fc_day
+        X_col = 'X'
+        Y_col = 'Y'
         #dfm = pd.DataFrame()
         
-        dfm = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = '600519.SH')
+        dfm = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode)
 
         dfm.set_index(["close"], inplace=True,drop = True) 
 
@@ -64,20 +65,24 @@ class FCFF(object):
         #df_basic['lastupdate'] = latestday
         end_date1 = '19950101'
         end_date2 = '19950101'
+        #遍历每个财报日
         for i,row in df_evl:
             end_date1 = end_date2
             end_date2 = row['end_date']
+
             df = dfm.loc[(dfm['close']>end_date1) & (df['close']<end_date2)]
+
             df['evaluation'] = row['evaluation']
             dfm['evaluation'] = df['evaluation']
 
-        dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
-        df = dfm['close']
-        dfm[Y_col] = dfm[Y_day]
-        dfm = msql.joinnames(df_basic)
-        dfm = dfm.sort_values('市场低估比率',ascending = False) 
+            df[Y_col] = (df['close'] - df.iloc[0]['close']) / df.iloc[0]['close']
+            dfm[Y_col] = df[Y_col]
 
-        dfm['grade'] = dfm['市场低估比率'].apply(lambda x: _fun(x))
+        dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
+
+        #dfm = msql.joinnames(df_basic)
+        #dfm = dfm.sort_values('市场低估比率',ascending = False) 
+        dfm[X_col] = dfm['市场低估比率'].apply(lambda x: _fun(x))
 
         dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
