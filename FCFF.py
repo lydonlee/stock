@@ -31,7 +31,7 @@ class FCFF(object):
                     filename= cfg.logfile_path,
                     filemode='w')
 
-    def grade(self,pcode = None,pdate = None):
+    def get_grade(self,pcode = None,pdate = None):
         try:
             dfm = pd.read_csv(self.monitor_csv,index_col = 0)
             if not dfm.empty:
@@ -42,6 +42,44 @@ class FCFF(object):
         except:
             print('没找到:'+self.monitor_csv,'请重新调用monitor')
             return pd.DataFrame()
+
+    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对财报日Y_fc_day的涨幅
+    def monitor_for_train(self,pcode = None,Y_day,Y_fc_day):
+        if Y_day <= Y_fc_day:
+            return
+        msql = md.datamodule()
+        #latestday = msql.getlatestday('daily_basic')
+        monitor_path = self._trainpath('monitor_'+pcode)
+        evl_path = self._trainpath(pcode)
+
+        Y_col = str(Y_day)+'_'+Y_fc_day
+        #dfm = pd.DataFrame()
+        
+        dfm = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = '600519.SH')
+
+        dfm.set_index(["close"], inplace=True,drop = True) 
+
+        df_evl = pd.read_csv(evl_path,index_col = 0)
+        #df_basic.set_index(["ts_code"], inplace=True,drop = True)
+        #df_basic['lastupdate'] = latestday
+        end_date1 = '19950101'
+        end_date2 = '19950101'
+        for i,row in df_evl:
+            end_date1 = end_date2
+            end_date2 = row['end_date']
+            df = dfm.loc[(dfm['close']>end_date1) & (df['close']<end_date2)]
+            df['evaluation'] = row['evaluation']
+            dfm['evaluation'] = df['evaluation']
+
+        dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
+        df = dfm['close']
+        dfm[Y_col] = dfm[Y_day]
+        dfm = msql.joinnames(df_basic)
+        dfm = dfm.sort_values('市场低估比率',ascending = False) 
+
+        dfm['grade'] = dfm['市场低估比率'].apply(lambda x: _fun(x))
+
+        dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
     #用每天的数据和季度估值做比较，每天调用    
     def monitor(self,pcode = None):
@@ -76,9 +114,43 @@ class FCFF(object):
         df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',index = True)
         if pcode != None:
             return df_basic.loc[pcode]
-    #根据季度报估值，每季度调用一次   
-    def build(self):
-       
+    
+    #根据季度报估值，每季度调用一次  
+    def build_for_monitor(self):
+        df_rslt = pd.DataFrame()
+        df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
+        msql = md.datamodule()
+        ts_code_df = msql.getts_code()
+        end_date = msql.getlatestday()
+        if end_date[4:] <='0630':
+            end_date = end_date[:4]+'0630'
+        else:
+            end_date = end_date[:4]+'1231' 
+        for i,code in ts_code_df.iterrows():
+            df1 = self._buildone(df = df_template,code = code['ts_code'],pdate = end_date)
+            if df1.empty:
+                continue
+            dic = {}
+
+            dic['ts_code'] = [code['ts_code']]
+            dic['evaluation'] = [df1['y-6'][37]]
+            dic['sus_grow_rate'] = [df1['y-6'][22]]
+            dic['y1_grow_rate'] = [df1['y1'][22]]
+            dic['y2_grow_rate'] = [df1['y2'][22]]
+            dic['y3_grow_rate'] = [df1['y3'][22]]
+            dic['y4_grow_rate'] = [df1['y4'][22]]
+            dic['y5_grow_rate'] = [df1['y5'][22]]
+
+            dic['y0_grow_rate'] = [df1['y0'][14]]
+            dic['y-1_grow_rate'] = [df1['y-1'][14]]
+            dic['y-2_grow_rate'] = [df1['y-2'][14]]
+    
+            df1 = pd.DataFrame.from_dict(dic)
+            df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
+
+        df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig',index = False) 
+
+    def build_for_train(self):
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         msql = md.datamodule()
         ts_code_df = msql.getts_code()
