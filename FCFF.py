@@ -155,13 +155,19 @@ class FCFF(object):
 
         df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig',index = False) 
 
-    def build_for_train(self):
+    #如果pts_code非空，只返回这一个code的数据，不用遍历所有
+    def build_for_train(self,pts_code = None):
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         msql = md.datamodule()
         ts_code_df = msql.getts_code()
         for i,code in ts_code_df.iterrows():
             df_rslt = pd.DataFrame()
-            
+            #如果pts_code非空，只返回这一个code的数据，不用遍历所有
+            if pts_code != None:
+                code = pts_code
+            else:
+                code = code['ts_code']
+
             for year in range(1995,self.thisyear,1):
                 for month in (0,1):
                     if month ==0:
@@ -169,13 +175,15 @@ class FCFF(object):
                     elif month ==1:
                         date = str(year)+'1231'
                     df1 = pd.DataFrame()
-                    df1 = self._buildone(df = df_template,code = code['ts_code'],pdate = date)
+                    df2 = pd.DataFrame()
+                    df1 = self._buildone(df = df_template,code = code,pdate = date)
         
                     if df1.empty:
                         continue
+                    print(df1['y-6'])
                     dic = {}
     
-                    dic['ts_code'] = [code['ts_code']]
+                    dic['ts_code'] = [code]
                     dic['evaluation'] = [df1['y-6'][37]]
                     dic['end_date'] = [date]
                     dic['sus_grow_rate'] = [df1['y-6'][22]]
@@ -189,11 +197,13 @@ class FCFF(object):
                     dic['y-1_grow_rate'] = [df1['y-1'][14]]
                     dic['y-2_grow_rate'] = [df1['y-2'][14]]
             
-                    df1 = pd.DataFrame.from_dict(dic)
-                    df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
+                    df2 = pd.DataFrame.from_dict(dic)
+                    df_rslt = pd.concat([df_rslt,df2.loc[0:0,]],ignore_index = True)
 
-            filepath=self._trainpath(code['ts_code'])
+            filepath=self._trainpath(code)
             df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
+            if pts_code != None:
+                return
 
     def _buildone(self,df,code,pdate):
         df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate)
@@ -206,9 +216,9 @@ class FCFF(object):
     def _getdata(self,ts_code,ptemplate,pdate):
         template = ptemplate
         msql = md.datamodule()
-        df = msql.pull_mysql(db = 'income',ts_code = ts_code)
-        df_cash = msql.pull_mysql(db = 'cashflow',ts_code = ts_code)
-        df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = ts_code)
+        df = msql.pull_data(db = 'income',ts_code = ts_code)
+        df_cash = msql.pull_data(db = 'cashflow',ts_code = ts_code)
+        df_blc = msql.pull_data(db = 'balancesheet',ts_code = ts_code)
 
         if df.empty or df_cash.empty or df_blc.empty :
             return pd.DataFrame()
@@ -357,13 +367,14 @@ class FCFF(object):
         return df
 
     def plot(self):
-        dfm = pd.read_csv(self.monitor_csv,index_col = None)
-        df = dfm.loc[300:3000,'市场高估比率']
-        print(df)
+        filepath = self._trainpath('monitor_'+'002008.SZ')
+        dfm = pd.read_csv(filepath,index_col = None)
+        #df = dfm.loc[300:3000,'市场高估比率']
+        #print(df)
         #df = dfm.loc['300287.SZ':'603881.SH','市场高估比率']
-        df.plot.kde()
+        #df.plot.kde()
         #plt.savefig('D:\test.png')
-        #df.plot(x='x',y='市场高估比率',kind = 'density')#'scatter')
+        dfm.plot(x='X',y='Y',kind = 'scatter')
      
         plt.show()
 
@@ -371,17 +382,18 @@ class FCFF(object):
         fpath = file+'.csv'
         return os.path.join(config.MODULE_PATH['train_FCFF'], fpath)
 
-    def _testbuild(self):
-        '000010.SZ'
+    def buildone_template(self,ts_code):
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
-        df = self._buildone(df =df_template, code = '600519.SH',pdate = '20181231')
-        file = self._trainpath('test.csv')
+        df = self._buildone(df =df_template, code = ts_code,pdate = '20181231')
+        file = self._trainpath(ts_code+'template')
         df.to_csv(file,encoding='utf_8_sig',index = True)
 if __name__ == '__main__':
     f = FCFF()
     #f._testbuild()
-    f.build()
+    #f.build()
     #msql._createdb('test1')
+    f.build_for_train('002008.SZ')
+    #f.buildone_template('002008.SZ')
     #f.plot()
     #d = f.monitor('000002.SZ')
     #print(d)

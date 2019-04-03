@@ -13,7 +13,10 @@ class datamodule(object):
         self.db_func_list = cfg.db_func_list
         self.mysqlrecord = cfg.mysqlrecord
         self.mysqlcmd = cfg.mysqlcmd
-    
+    def pull_data(self,db = 'daily_basic',date = None,limit = None,ts_code = '300552.SZ'):
+        df = self.pro.query(db,ts_code = ts_code)
+        return df
+
     def pull_mysql(self,db = 'daily_basic',date = None,limit = None,ts_code = '300552.SZ'):
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd) 
