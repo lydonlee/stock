@@ -5,15 +5,23 @@ from sqlalchemy.ext.declarative import declarative_base
 import datetime
 import csv
 import config
+import util as ut
+def _lower(x):
+    return x.lower()
 class datamodule(object):
     def __init__(self):
         cfg = config.configs.module
-        ts.set_token('1360474e70eee70c9c1b9740d684a8800e89903641c6ffb82ac549da')
-        self.pro = ts.pro_api()
         self.db_func_list = cfg.db_func_list
         self.mysqlrecord = cfg.mysqlrecord
         self.mysqlcmd = cfg.mysqlcmd
-    
+    def _init_tushare(self):
+        ts.set_token('1360474e70eee70c9c1b9740d684a8800e89903641c6ffb82ac549da')
+        self.pro = ts.pro_api()
+
+    def pull_data(self,db = 'daily_basic',date = None,limit = None,ts_code = '300552.SZ'):
+        df = self.pro.query(db,ts_code = ts_code)
+        return df
+
     def pull_mysql(self,db = 'daily_basic',date = None,limit = None,ts_code = '300552.SZ'):
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd) 
@@ -52,9 +60,7 @@ class datamodule(object):
             except :
                 print("err："+database+day)
                 continue 
-
         yconnect.dispose()
-
     def _push_daily_basic(self,start='20180802',end='20180809',firsttime = 0):
         sqlcmd=self.mysqlcmd.format('daily_basic_ts_code')
         yconnect = create_engine(sqlcmd) 
@@ -62,18 +68,18 @@ class datamodule(object):
         df1 = self.getts_code()
 
         for index, code in df1.iterrows():
+            ts_code = code['ts_code'].lower()
             try:
                 if firsttime == 1:
-                    df = self.pro.query('daily_basic',ts_code = code['ts_code'])
+                    df = self.pro.query('daily_basic',ts_code = ts_code)
                 else:
-                    df = self.pro.query('daily_basic',ts_code = code['ts_code'],start_date = start,end_date=end)
+                    df = self.pro.query('daily_basic',ts_code = ts_code,start_date = start,end_date=end)
                 
                 if not df.empty:
-                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema='daily_basic_ts_code',if_exists='append') 
-            except :
-                print("err："+code['ts_code'])
+                    pd.io.sql.to_sql(df,ts_code,con=yconnect, schema='daily_basic_ts_code',if_exists='append') 
+            except Exception as e:
+                print(e)
                 continue 
-            print(code['ts_code'])
         yconnect.dispose()
 
     def _push_by_code(self,db):
@@ -83,35 +89,76 @@ class datamodule(object):
         df1 = self.getts_code()
 
         for index, code in df1.iterrows():
+            ts_code = code['ts_code'].lower()
             try:
-                df = self.pro.query(db,ts_code = code['ts_code'])
+                df = self.pro.query(db,ts_code = ts_code)
                 if not df.empty:
-                    pd.io.sql.to_sql(df,code['ts_code'],con=yconnect, schema=db,if_exists='replace') 
-            except :
-                print("err："+code['ts_code'])
+                    pd.io.sql.to_sql(df,ts_code,con=yconnect, schema=db,if_exists='replace') 
+            except Exception as e:
+                print(e)
                 continue 
-            print(code['ts_code'])
+     
         yconnect.dispose()
 
     #为df增加股票名字，行业等基本信息    
     def joinnames(self,df):
         df1 = self._getstock_basic()
         df1.set_index(["ts_code"], inplace=True,drop = True)
-
         if df.index.name != 'ts_code':
             df.set_index(["ts_code"], inplace=True,drop = True)
-
-
         df = pd.concat([df,df1],axis=1,join_axes=[df.index])
-
         return df
-    
+
+    def _push_db(self,db):
+        sqlcmd=self.mysqlcmd.format(db)
+        yconnect = create_engine(sqlcmd) 
+        if db == 'stock_basic' or db =='trade_cal':
+            df = self.pro.query(db)
+            pd.io.sql.to_sql(df,db,con=yconnect, schema=db,if_exists='replace') 
+        yconnect.dispose()
+
     def _getstock_basic(self):
+        concmd = self.mysqlcmd.format('trade_cal')
+        yconnect = create_engine(concmd) 
+        df = pd.DataFrame()
+       
+        sql_cmd = 'select * from stock_basic'
+       
+        try:
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+        except:
+            print("err：pull_mysql:"+sql_cmd)
+        yconnect.dispose()
+        return df
+
+
+    def _getstock_basic_net(self):
+        self._init_tushare()
         df = self.pro.query('stock_basic',exchange='', list_status='L')
         return df
 
-    def gettradedays(self,start_date1='', end_date1='',firsttime = 0):
+    def gettradedays(self,start_date1=None, end_date1=None,firsttime = 0):
+        concmd = self.mysqlcmd.format('trade_cal')
+        yconnect = create_engine(concmd) 
+        df = pd.DataFrame()
+        if firsttime == 1 or (start_date1==None and end_date1==None):
+            sql_cmd = 'select  cal_date from trade_cal where is_open = 1'
+        elif start_date1 != None and end_date1 != None:
+            sql_cmd = "select  cal_date from trade_cal where is_open = 1 and cal_date >= '"+ start_date1 +"' and cal_date <= '"+end_date1+"'"
+        elif start_date1 != None and end_date1 == None:
+            sql_cmd = "select  cal_date from trade_cal where is_open = 1 and cal_date >= '"+ start_date1+"'"
+        elif start_date1 == None and end_date1 != None:
+            sql_cmd = "select  cal_date from trade_cal where is_open = 1 and cal_date <= '"+ end_date1+"'"
+        try:
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+        except:
+            print("err：pull_mysql:"+sql_cmd)
+        yconnect.dispose()
 
+        return df['cal_date'].tolist()
+
+    def gettradedays_net(self,start_date1='', end_date1='',firsttime = 0):
+        self._init_tushare()
         if firsttime == 1 :
             df = self.pro.trade_cal(exchange='')
         else:    
@@ -136,12 +183,28 @@ class datamodule(object):
             ttable = df.iloc[0][0]
             lastday = ttable[1:]
         return lastday           
-
     def getts_code(self):
+        concmd = self.mysqlcmd.format('stock_basic')
+        yconnect = create_engine(concmd) 
+        df = pd.DataFrame()
+        sql_cmd = 'select ts_code from stock_basic'
+
+        try:
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+        except:
+            print("err：pull_mysql:"+sql_cmd)
+        yconnect.dispose()
+        #df['ts_code'] = df['ts_code'].apply(lambda x: _lower(x))
+        return df
+
+    def getts_code_net(self):
+        self._init_tushare()
         df = self.pro.query('stock_basic',exchange='', list_status='L', fields='ts_code')
+        df['ts_code'] = df['ts_code'].apply(lambda x: _lower(x))
         return df
 
     def updatealldb(self,firsttime = 0):
+        self._init_tushare()
         now = datetime.datetime.now().strftime('%Y%m%d')
         for db1 in self.db_func_list:
             try:
@@ -157,14 +220,20 @@ class datamodule(object):
                 self._push_daily_basic(start=s,end=now,firsttime=firsttime)
             elif db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet':
                 self._push_by_code(db1)
+            elif db1 == 'stock_basic' or db1 == 'trade_cal':
+                self._push_db(db1)
             else:
                 self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
+            
             self.fix_db(db = db1)
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
     def fix_db(self,db = 'daily_basic_ts_code'):
+        self._init_tushare()
         if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet'):
-            self._fix_by_ts_code(sqldb=db)
+            self._fix_by_ts_code(sqldb=db) 
+        elif db == 'stock_basic' or db == 'trade_cal':
+            return
         else:
             self._fix_by_time(db)
 
@@ -196,7 +265,7 @@ class datamodule(object):
         lsdays = self.gettradedays(firsttime = 1)
         for day in lsdays:
             table = 't'+day
-            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='"+db+"' AND TABLE_NAME="+ table
+            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='"+db+"' AND TABLE_NAME='"+ table+"'"
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
             if df.empty:
                 try:
@@ -209,11 +278,11 @@ class datamodule(object):
         #选一个已经存在的数据库先连上
         concmd = self.mysqlcmd.format('performance_schema')
         yconnect = create_engine(concmd) 
-        #conn = yconnect.connect()
-        #conn.execute("commit")
+        conn = yconnect.connect()
+        conn.execute("commit")
 
         sqlcmd = "create database " + db
-        yconnect.execute(sqlcmd)
+        conn.execute(sqlcmd)
         conn.close()
 
 

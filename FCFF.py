@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import os
 import math
 import logging
-from threading import Thread
+import util as ut
+
 SUSTAINABLE_GROWTH_RATE = 0.06
 
 def _fun(x):
@@ -44,32 +45,14 @@ class FCFF(object):
             return pd.DataFrame()
     #新建训练数据，X,Y，X为截止当前某股票的grade,Y为股价相对最近一次财报日的涨幅
     #后续要考虑财报公布日期的因素
-    def monitor_for_train(self):
-        msql = md.datamodule()
-        ts_code_df = msql.getts_code()
-        l = len(ts_code_df)
-        l0 = round(l/4)
-        df1 = ts_code_df.iloc[0:l0]
-        df2 = ts_code_df.iloc[l0:l0*2]
-        df3 = ts_code_df.iloc[l0*2:l0*3]
-        df4 = ts_code_df.iloc[l0*3:l]
 
-        p1 = Thread(target=self._tread_monitor, args=(df1,))
-        p2 = Thread(target=self._tread_monitor, args=(df2,))
-        p3 = Thread(target=self._tread_monitor, args=(df3,))
-        p4= Thread(target=self._tread_monitor, args=(df4,))
-
-        p1.start()
-        p2.start()
-        p3.start()
-        p4.start()
-        
-    def _tread_monitor(self,df):
-        print('start thread')
-        for i,code in df.iterrows():
-            self._monitor_for_train(pcode = code['ts_code'])
-
-    def _monitor_for_train(self,pcode = None):
+    def monitor_train(self):
+        ut.thread_loop(by = 'ts_code',pFunc = self._monitor_one_train)
+    def build_train(self):
+        ut.thread_loop(by = 'ts_code',pFunc = self._build_one_train)
+    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对上一次财报日的涨幅
+    #后续要考虑财报公布日期的因素
+    def _monitor_one_train(self,pcode = None):
         msql = md.datamodule()
         #latestday = msql.getlatestday('daily_basic')
         monitor_path = self._trainpath('monitor_'+pcode)
@@ -119,48 +102,6 @@ class FCFF(object):
 
         dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
-    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对上一次财报日的涨幅
-    #后续要考虑财报公布日期的因素
-    def monitor_for_train(self,pcode = None):
-        if Y_day <= Y_fc_day:
-            return
-        msql = md.datamodule()
-        #latestday = msql.getlatestday('daily_basic')
-        monitor_path = self._trainpath('monitor_'+pcode)
-        evl_path = self._trainpath(pcode)
-        X_col = 'X'
-        Y_col = 'Y'
-        #dfm = pd.DataFrame()
-        
-        dfm = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode)
-
-        dfm.set_index(["close"], inplace=True,drop = True) 
-
-        df_evl = pd.read_csv(evl_path,index_col = 0)
-        #df_basic.set_index(["ts_code"], inplace=True,drop = True)
-        #df_basic['lastupdate'] = latestday
-        end_date1 = '19950101'
-        end_date2 = '19950101'
-        #遍历每个财报日
-        for i,row in df_evl:
-            end_date1 = end_date2
-            end_date2 = row['end_date']
-
-            df = dfm.loc[(dfm['close']>end_date1) & (df['close']<end_date2)]
-
-            df['evaluation'] = row['evaluation']
-            dfm['evaluation'] = df['evaluation']
-
-            df[Y_col] = (df['close'] - df.iloc[0]['close']) / df.iloc[0]['close']
-            dfm[Y_col] = df[Y_col]
-
-        dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
-
-        #dfm = msql.joinnames(df_basic)
-        #dfm = dfm.sort_values('市场低估比率',ascending = False) 
-        dfm[X_col] = dfm['市场低估比率'].apply(lambda x: _fun(x))
-
-        dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
     #用每天的数据和季度估值做比较，每天调用    
     def monitor(self,pcode = None):
@@ -201,6 +142,7 @@ class FCFF(object):
         df_rslt = pd.DataFrame()
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         msql = md.datamodule()
+
         ts_code_df = msql.getts_code()
         end_date = msql.getlatestday()
         if end_date[4:] <='0630':
@@ -208,7 +150,10 @@ class FCFF(object):
         else:
             end_date = end_date[:4]+'1231' 
         for i,code in ts_code_df.iterrows():
-            df1 = self._buildone(df = df_template,code = code['ts_code'],pdate = end_date)
+            df_income = msql.pull_mysql(db = 'income',ts_code = code['ts_code'])
+            df_cash = msql.pull_mysql(db = 'cashflow',ts_code = code['ts_code'])
+            df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = code['ts_code'])
+            df1 = self._buildtemplate(df = df_template,code = code['ts_code'],pdate = end_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
             if df1.empty:
                 continue
             dic = {}
@@ -231,62 +176,74 @@ class FCFF(object):
 
         df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig',index = False) 
 
-    def build_for_train(self):
+    #pcode必须，储存一个code的evaluation数据到 /data/train_FCFF/002008.sz
+    def _build_one_train(self,pcode = None,ptrade_date = None):
+        if pcode == None:
+            return
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         msql = md.datamodule()
-        ts_code_df = msql.getts_code()
-        for i,code in ts_code_df.iterrows():
-            df_rslt = pd.DataFrame()
-            
-            for year in range(1995,self.thisyear,1):
-                for month in (0,1):
-                    if month ==0:
-                        date = str(year)+'0630'
-                    elif month ==1:
-                        date = str(year)+'1231'
-                    df1 = pd.DataFrame()
-                    df1 = self._buildone(df = df_template,code = code['ts_code'],pdate = date)
-        
-                    if df1.empty:
-                        continue
-                    dic = {}
+        df_income = msql.pull_mysql(db = 'income',ts_code = pcode)
+        df_cash = msql.pull_mysql(db = 'cashflow',ts_code = pcode)
+        df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = pcode)
+
+        df_rslt = pd.DataFrame()
+
+        for year in range(1995,self.thisyear,1):
+            for month in (0,1):
+                if month ==0:
+                    date = str(year)+'0630'
+                elif month ==1:
+                    date = str(year)+'1231'
+                
+                if ptrade_date != None:
+                    date = ptrade_date
+
+                df1 = pd.DataFrame()
+                df2 = pd.DataFrame()
+                df1 = self._buildtemplate(df = df_template,code = pcode,pdate = date,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
     
-                    dic['ts_code'] = [code['ts_code']]
-                    dic['evaluation'] = [df1['y-6'][37]]
-                    dic['end_date'] = [date]
-                    dic['sus_grow_rate'] = [df1['y-6'][22]]
-                    dic['y1_grow_rate'] = [df1['y1'][22]]
-                    dic['y2_grow_rate'] = [df1['y2'][22]]
-                    dic['y3_grow_rate'] = [df1['y3'][22]]
-                    dic['y4_grow_rate'] = [df1['y4'][22]]
-                    dic['y5_grow_rate'] = [df1['y5'][22]]
+                if df1.empty:
+                    continue
+        
+                dic = {}
 
-                    dic['y0_grow_rate'] = [df1['y0'][14]]
-                    dic['y-1_grow_rate'] = [df1['y-1'][14]]
-                    dic['y-2_grow_rate'] = [df1['y-2'][14]]
-            
-                    df1 = pd.DataFrame.from_dict(dic)
-                    df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
+                dic['ts_code'] = [pcode]
+                dic['evaluation'] = [df1['y-6'][37]]
+                dic['end_date'] = [date]
+                dic['sus_grow_rate'] = [df1['y-6'][22]]
+                dic['y1_grow_rate'] = [df1['y1'][22]]
+                dic['y2_grow_rate'] = [df1['y2'][22]]
+                dic['y3_grow_rate'] = [df1['y3'][22]]
+                dic['y4_grow_rate'] = [df1['y4'][22]]
+                dic['y5_grow_rate'] = [df1['y5'][22]]
 
-            filepath=self._trainpath(code['ts_code'])
-            df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
+                dic['y0_grow_rate'] = [df1['y0'][14]]
+                dic['y-1_grow_rate'] = [df1['y-1'][14]]
+                dic['y-2_grow_rate'] = [df1['y-2'][14]]
+        
+                df2 = pd.DataFrame.from_dict(dic)
+                df_rslt = pd.concat([df_rslt,df2.loc[0:0,]],ignore_index = True)
 
-    def _buildone(self,df,code,pdate):
-        df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate)
+                if ptrade_date != None:
+                    filepath=self._trainpath(pcode)
+                    df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
+                    return
+    
+        filepath=self._trainpath(pcode)
+        df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
+    
+    def _buildtemplate(self,df,code,pdate,df_income,df_cash,df_blc):
+        df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
         if df.empty:
             return df
         df = self._processdata(pdf=df)
         return df
         #df.to_csv(self.FCFF_csv,encoding='utf_8_sig')
     #获取利润等数据，存入以下行：8:12，22，32，33，34
-    def _getdata(self,ts_code,ptemplate,pdate):
-        template = ptemplate
-        msql = md.datamodule()
-        df = msql.pull_mysql(db = 'income',ts_code = ts_code)
-        df_cash = msql.pull_mysql(db = 'cashflow',ts_code = ts_code)
-        df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = ts_code)
+    def _getdata(self,ts_code,ptemplate,pdate,df_income,df_cash,df_blc):
+        template = ptemplate.copy(deep=True)
 
-        if df.empty or df_cash.empty or df_blc.empty :
+        if df_income.empty or df_cash.empty or df_blc.empty :
             return pd.DataFrame()
         #如果输入的pdate是整年1231，则获取过去7年的年报，如果pdate是‘ 0930，0630，0331’等季度，则滚动前四季度记为一年
         endyear = int(pdate[0:4])
@@ -298,9 +255,9 @@ class FCFF(object):
             #end_date1 = str(i+1)+'1231'
             y = 'y'+str(i - endyear)
             #8 :净利润：income：n_income
-            dfq3   = df[df['end_date'] == q3]
-            dflq12 = df[df['end_date'] == lq12]
-            dflq3  = df[df['end_date'] == lq3]
+            dfq3   = df_income[df_income['end_date'] == q3]
+            dflq12 = df_income[df_income['end_date'] == lq12]
+            dflq3  = df_income[df_income['end_date'] == lq3]
    
             if not dfq3.empty and not dflq12.empty and not dflq3.empty:
                 try:
@@ -370,7 +327,7 @@ class FCFF(object):
         return template
 
     def _processdata(self,pdf):
-        df = pdf
+        df = pdf.copy(deep=True)
         #处理第13行前半部分y-7:y0
         df1 = df.loc[8:12,'y-7':'y0'] 
         df.loc[13,'y-7':'y0'] = df1.apply('sum',axis=0)
@@ -433,9 +390,10 @@ class FCFF(object):
         return df
 
     def plot(self):
-        monitor_path = self._trainpath('monitor_'+'000002.SZ')
-        dfm = pd.read_csv(monitor_path,index_col = None)
-        
+        filepath = self._trainpath('monitor_'+'002008.SZ')
+        dfm = pd.read_csv(filepath,index_col = None)
+        #df = dfm.loc[300:3000,'市场高估比率']
+        #print(df)
         #df = dfm.loc['300287.SZ':'603881.SH','市场高估比率']
         #df.plot.kde()
         #plt.savefig('D:\test.png')
@@ -447,17 +405,35 @@ class FCFF(object):
         fpath = file+'.csv'
         return os.path.join(config.MODULE_PATH['train_FCFF'], fpath)
 
-    def _testbuild(self):
+    def buildone_template(self,ts_code):
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
-        df = self._buildone(df =df_template, code = '600519.SH',pdate = '20181231')
-        file = self._trainpath('test.csv')
-        df.to_csv(file,encoding='utf_8_sig',index = True)
+        msql = md.datamodule()
+        df_income = msql.pull_mysql(db = 'income',ts_code = ts_code)
+        df_cash = msql.pull_mysql(db = 'cashflow',ts_code = ts_code)
+        df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = ts_code)
+
+        for year in range(1995,self.thisyear,1):
+                for month in (0,1):
+                    if month ==0:
+                        date = str(year)+'0630'
+                    elif month ==1:
+                        date = str(year)+'1231'
+                    df = self._buildtemplate(df =df_template, code = ts_code,pdate = date,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
+        file = self._trainpath(ts_code+'template')
+        df_template.to_csv(file,encoding='utf_8_sig',index = True)
+
 if __name__ == '__main__':
     f = FCFF()
     #f._testbuild()
-    #f.build()
-    #f.monitor_for_train('000002.SZ')
-    f.monitor_for_train()
+    #f.build_train()
+    f.monitor_train()
+    #msql = md.datamodule()
+    #msql.updatealldb()
+    #print(msql.gettradedays())
+    #msql._push_daily_basic1()
+    #f._build_one_train(pcode = '300418.SZ',ptrade_date = None)#(pcode = '002008.SZ')#,ptrade_date = '20181231')
+    #f._monitor_for_train(pcode = '002008.SZ')
+    #f.buildone_template('002008.SZ')
     #f.plot()
     #d = f.monitor('000002.SZ')
     #print(d)

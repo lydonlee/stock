@@ -19,7 +19,7 @@ for path in MODULE_PATH.values():
         sys.path.append(path)
 
 if 'Windows' in platform.uname() :
-    db_func_list = ['daily_basic_ts_code','daily_basic',]#'balancesheet','cashflow','margin_detail','dividend','income'
+    db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic'] #'income']
 else:
     db_func_list = ['daily_basic_ts_code','dividend']
     
