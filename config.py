@@ -12,6 +12,7 @@ MODULE_PATH['backtests'] = os.path.join(ROOT_PATH, 'backtests')
 MODULE_PATH['module'] = os.path.join(ROOT_PATH, 'module')
 MODULE_PATH['data'] = os.path.join(ROOT_PATH, 'data')
 MODULE_PATH['train_FCFF'] = os.path.join(MODULE_PATH['data'], 'train_FCFF')
+MODULE_PATH['detail'] = os.path.join(MODULE_PATH['data'], 'detail')
 
 # 添加到环境变量中
 for path in MODULE_PATH.values():
@@ -19,13 +20,17 @@ for path in MODULE_PATH.values():
         sys.path.append(path)
 
 if 'Windows' in platform.uname() :
-    db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic'] #'income']
+    db_update_day = ['daily_basic','daily_basic_ts_code','margin_detail']
+    db_update_quter = ['balancesheet','cashflow','dividend','trade_cal','stock_basic','income','future_income']
+    #db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic','income','future_income']
 else:
     db_func_list = ['daily_basic_ts_code','dividend']
     
 configs = {
     'module': {
-        'db_func_list'  : db_func_list,
+        'db_update_day' : db_update_day,
+        'db_update_quter':db_update_quter,
+        #'db_func_list'  : db_func_list,
         'mysqlrecord'   : os.path.join(MODULE_PATH['data'],'mysqlrecord1.csv'),
         'mysqlcmd'      : 'mysql+pymysql://root:152921@localhost:3306/{}?charset=utf8',
     },
@@ -74,3 +79,10 @@ def toDict(d):
     return D
 
 configs = toDict(configs)
+
+def detaildir(dirname,file):
+    dirc = os.path.join(MODULE_PATH['detail'], dirname)
+    if not os.path.exists(dirc):
+        os.makedirs(dirc)
+
+    return os.path.join(dirc,file)

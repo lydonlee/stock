@@ -11,7 +11,7 @@ def _lower(x):
 class datamodule(object):
     def __init__(self):
         cfg = config.configs.module
-        self.db_func_list = cfg.db_func_list
+        #self.db_func_list = cfg.db_func_list
         self.mysqlrecord = cfg.mysqlrecord
         self.mysqlcmd = cfg.mysqlcmd
     def _init_tushare(self):
@@ -36,6 +36,8 @@ class datamodule(object):
                 sql_cmd = 'select * from `'+ts_code + '`' +'where trade_date = '+date
         elif db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet':
             sql_cmd = 'select * from `'+ts_code + '`'
+        elif db == 'future_income':
+            sql_cmd = 'select * from future_income where ts_code ='+ts_code[:-3]
         else:
             sql_cmd = 'select * from '+'t'+ date
 
@@ -203,10 +205,19 @@ class datamodule(object):
         df['ts_code'] = df['ts_code'].apply(lambda x: _lower(x))
         return df
 
-    def updatealldb(self,firsttime = 0):
+    def updatealldb(self,firsttime = 0,daily = True,quter=False):
         self._init_tushare()
         now = datetime.datetime.now().strftime('%Y%m%d')
-        for db1 in self.db_func_list:
+        cfg = config.configs.module
+        if daily and quter:
+            db_list = cfg.db_update_day + cfg.db_update_quter
+        elif daily:
+            db_list = cfg.db_update_day
+        elif quter:
+            db_list = cfg.db_update_quter
+                      
+         
+        for db1 in db_list:
             try:
                 s = self.getlatestday(db1)
             except:
@@ -222,6 +233,8 @@ class datamodule(object):
                 self._push_by_code(db1)
             elif db1 == 'stock_basic' or db1 == 'trade_cal':
                 self._push_db(db1)
+            elif db1 == 'future_income':
+                self._pushfutureincome()
             else:
                 self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
             
@@ -232,7 +245,7 @@ class datamodule(object):
         self._init_tushare()
         if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet'):
             self._fix_by_ts_code(sqldb=db) 
-        elif db == 'stock_basic' or db == 'trade_cal':
+        elif db == 'stock_basic' or db == 'trade_cal' or db =='future_income':
             return
         else:
             self._fix_by_time(db)
@@ -285,6 +298,38 @@ class datamodule(object):
         conn.execute(sqlcmd)
         conn.close()
 
+    def _pushfutureincome(self):
+        db = 'future_income'
+        concmd = self.mysqlcmd.format(db)
+        yconnect = create_engine(concmd) 
+        df = pd.DataFrame()
+        url_formate = 'http://stockpage.10jqka.com.cn/{}/worth/#forecast'
+        dft = self.getts_code()
+        driver = ut.geturl()
+        for index, code in dft.iterrows():
+            ts_code = code['ts_code'][:-3]
+            url = url_formate.format(ts_code)
+
+            driver.get(url)
+            driver.implicitly_wait(10)
+            try:
+                y2019 = driver.find_element_by_xpath("//*[@id='forecast']/div[2]/div[2]/div[2]/table/tbody/tr[1]/th").text
+                price2019 = driver.find_element_by_xpath("//*[@id='forecast']/div[2]/div[2]/div[2]/table/tbody/tr[1]/td[3]").text
+
+                y2020 = driver.find_element_by_xpath('//*[@id="forecast"]/div[2]/div[2]/div[2]/table/tbody/tr[2]/th').text
+                price2020 = driver.find_element_by_xpath('//*[@id="forecast"]/div[2]/div[2]/div[2]/table/tbody/tr[2]/td[3]').text
+
+                y2021 = driver.find_element_by_xpath('//*[@id="forecast"]/div[2]/div[2]/div[2]/table/tbody/tr[3]/th').text
+                price2021 = driver.find_element_by_xpath('//*[@id="forecast"]/div[2]/div[2]/div[2]/table/tbody/tr[3]/td[3]').text
+            except Exception as e:
+                print(e)
+                continue
+            d = {'ts_code': [ts_code,ts_code,ts_code], 'year': [y2019,y2020,y2021],'n_income':[price2019,price2020,price2021]}
+            df1 = pd.DataFrame.from_dict(d)
+            pd.io.sql.to_sql(df1,db,con=yconnect, schema=db,if_exists='append')#,index = False)
+            #df = pd.concat([df,df1],ignore_index = False,sort=False)
+
+        #pd.io.sql.to_sql(df,db,con=yconnect, schema=db,if_exists='replace')
 
 if __name__ == '__main__':
     d = datamodule()

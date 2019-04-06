@@ -3,8 +3,8 @@ from module import module as md
 import config
 import datetime
 import tushare as ts
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import math
 import logging
@@ -177,6 +177,23 @@ class FCFF(object):
         df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig',index = False) 
 
     #pcode必须，储存一个code的evaluation数据到 /data/train_FCFF/002008.sz
+    def detail_template(self,pcode = None,ptrade_date = None):
+        if pcode == None or ptrade_date == None:
+            return
+        df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
+        msql = md.datamodule()
+        df_income = msql.pull_mysql(db = 'income',ts_code = pcode)
+        df_cash = msql.pull_mysql(db = 'cashflow',ts_code = pcode)
+        df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = pcode)
+        df_future = msql.pull_mysql(db = 'future_income',ts_code = pcode)
+
+        df_rslt = pd.DataFrame()
+             
+        df_rslt = self._buildtemplate(df = df_template,code = pcode,pdate = ptrade_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future = df_future)
+        
+        filepath = config.detaildir(pcode,pcode+'template.csv')
+        df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)        
+
     def _build_one_train(self,pcode = None,ptrade_date = None):
         if pcode == None:
             return
@@ -185,6 +202,7 @@ class FCFF(object):
         df_income = msql.pull_mysql(db = 'income',ts_code = pcode)
         df_cash = msql.pull_mysql(db = 'cashflow',ts_code = pcode)
         df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = pcode)
+        df_future = msql.pull_mysql(db = 'future_income',ts_code = pcode)
 
         df_rslt = pd.DataFrame()
 
@@ -200,7 +218,7 @@ class FCFF(object):
 
                 df1 = pd.DataFrame()
                 df2 = pd.DataFrame()
-                df1 = self._buildtemplate(df = df_template,code = pcode,pdate = date,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
+                df1 = self._buildtemplate(df = df_template,code = pcode,pdate = date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future = df_future)
     
                 if df1.empty:
                     continue
@@ -232,91 +250,120 @@ class FCFF(object):
         filepath=self._trainpath(pcode)
         df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
     
-    def _buildtemplate(self,df,code,pdate,df_income,df_cash,df_blc):
-        df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
+    def _buildtemplate(self,df,code,pdate,df_income,df_cash,df_blc,df_future):
+        df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
         if df.empty:
             return df
         df = self._processdata(pdf=df)
         return df
         #df.to_csv(self.FCFF_csv,encoding='utf_8_sig')
     #获取利润等数据，存入以下行：8:12，22，32，33，34
-    def _getdata(self,ts_code,ptemplate,pdate,df_income,df_cash,df_blc):
+    def _getdata_one(self,ptemplate,pdate,df_income,df_cash,df_blc,i):
+        template = ptemplate.copy(deep=True)
+        endyear = int(pdate[0:4])
+        #滚动四季度等于今年前3季度+去年第四季度q3+(lq12-lq3)，对其他季度同样适用这个公式
+        q3 = str(i)+pdate[4:] #'20181231' or 20180930，20180630，20180331 ,
+        lq12 = str(i-1)+'1231' #20171231
+        lq3 = str(i-1)+pdate[4:]#20171231 or 20170931 2017630 20170331
+        #end_date1 = str(i+1)+'1231'
+        y = 'y'+str(i - endyear)
+        #8 :净利润：income：n_income
+        dfq3   = df_income[df_income['end_date'] == q3]
+        dflq12 = df_income[df_income['end_date'] == lq12]
+        dflq3  = df_income[df_income['end_date'] == lq3]
+
+        if not dfq3.empty and not dflq12.empty and not dflq3.empty:
+            try:
+                template.loc[8,y] = dfq3.iloc[0]['n_income'] + dflq12.iloc[0]['n_income'] - dflq3.iloc[0]['n_income']
+            except:
+                logging.debug(q3+'净利润数据缺失')
+                return template
+        else:
+            logging.debug(q3+'净利润数据为空')
+            return template
+            
+        #9 +折旧和摊销cashflow，depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
+        #df1 = df_cash[df_cash['end_date'] == end_date]
+        dfq3   = df_cash[df_cash['end_date'] == q3]
+        dflq12 = df_cash[df_cash['end_date'] == lq12]
+        dflq3  = df_cash[df_cash['end_date'] == lq3]
+        
+        if not dfq3.empty and not dflq12.empty and not dflq3.empty:
+            #可能会因为数据缺失导致异常
+            try:
+            
+                depr_fa_coga_dpba     =   dfq3.iloc[0]['depr_fa_coga_dpba']+dflq12.iloc[0]['depr_fa_coga_dpba']-dflq3.iloc[0]['depr_fa_coga_dpba']
+                amort_intang_assets   =   dfq3.iloc[0]['amort_intang_assets']+dflq12.iloc[0]['amort_intang_assets']-dflq3.iloc[0]['amort_intang_assets']
+                lt_amort_deferred_exp =   dfq3.iloc[0]['lt_amort_deferred_exp']+dflq12.iloc[0]['lt_amort_deferred_exp']-dflq3.iloc[0]['lt_amort_deferred_exp']
+                template.loc[9,y] = depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
+    
+                #10 +支付的利息 cashflow:c_pay_dist_dpcp_int_exp
+                c_pay_dist_dpcp_int_exp = dfq3.iloc[0]['c_pay_dist_dpcp_int_exp']+dflq12.iloc[0]['c_pay_dist_dpcp_int_exp']-dflq3.iloc[0]['c_pay_dist_dpcp_int_exp']
+                template.loc[10,y] = c_pay_dist_dpcp_int_exp
+
+                #11 -资本性支出：cashflow：c_pay_acq_const_fiolta
+                c_pay_acq_const_fiolta = dfq3.iloc[0]['c_pay_acq_const_fiolta']+dflq12.iloc[0]['c_pay_acq_const_fiolta']-dflq3.iloc[0]['c_pay_acq_const_fiolta']
+                template.loc[11,y] = c_pay_acq_const_fiolta*(-1)
+    
+                #12 营运资金变动：balancesheet：y0（total_cur_assets - total_cur_liab）- y1(total_cur_assets - total_cur_liab)
+                q31 = str(i+1)+pdate[4:] #'20181231' or 20180930，20180630，20180331 ,
+                lq121 = str(i-1+1)+'1231' #2011231
+                lq31 = str(i-1+1)+pdate[4:]#20171231 or 20170931 2017630 20170331
+
+                dfq3   = df_blc[df_blc['end_date'] == q3]
+                dflq12 = df_blc[df_blc['end_date'] == lq12]
+                dflq3  = df_blc[df_blc['end_date'] == lq3]
+
+                dfq31   = df_blc[df_blc['end_date'] == q31]
+                dflq121 = df_blc[df_blc['end_date'] == lq121]
+                dflq31  = df_blc[df_blc['end_date'] == lq31]
+        
+                if not dfq3.empty and not dflq12.empty and not dflq3.empty:
+                    if not dfq31.empty and not dflq121.empty and not dflq31.empty:
+                        
+                        total_cur_assets1 = dfq3.iloc[0]['total_cur_assets']+dflq12.iloc[0]['total_cur_assets']-dflq3.iloc[0]['total_cur_assets']
+                        total_cur_assets2 = dfq31.iloc[0]['total_cur_assets']+dflq121.iloc[0]['total_cur_assets']-dflq31.iloc[0]['total_cur_assets']
+                        total_cur_liab1 = dfq3.iloc[0]['total_cur_liab']+dflq12.iloc[0]['total_cur_liab']-dflq3.iloc[0]['total_cur_liab']
+                        total_cur_liab2 = dfq31.iloc[0]['total_cur_liab']+dflq121.iloc[0]['total_cur_liab']-dflq31.iloc[0]['total_cur_liab']
+                        template.loc[12,y] = total_cur_assets1 - total_cur_liab1 -(total_cur_assets2 - total_cur_liab2)
+            except:
+                logging.debug('dflq3数据为空')
+        return template
+                
+
+    def _getdata(self,ts_code,ptemplate,pdate,df_income,df_cash,df_blc,df_future):
         template = ptemplate.copy(deep=True)
 
         if df_income.empty or df_cash.empty or df_blc.empty :
             return pd.DataFrame()
         #如果输入的pdate是整年1231，则获取过去7年的年报，如果pdate是‘ 0930，0630，0331’等季度，则滚动前四季度记为一年
         endyear = int(pdate[0:4])
+        df_future['year'] = df_future['year'].apply(lambda x:int(x))
+        df_future['n_income'] = df_future['n_income'].apply(lambda x:float(x))
+
+        #处理y0 --y-7 的现金流
         for i in range(endyear,endyear- 7,-1):
-            #滚动四季度等于今年前3季度+去年第四季度q3+(lq12-lq3)，对其他季度同样适用这个公式
-            q3 = str(i)+pdate[4:] #'20181231' or 20180930，20180630，20180331 ,
-            lq12 = str(i-1)+'1231' #20171231
-            lq3 = str(i-1)+pdate[4:]#20171231 or 20170931 2017630 20170331
-            #end_date1 = str(i+1)+'1231'
-            y = 'y'+str(i - endyear)
-            #8 :净利润：income：n_income
-            dfq3   = df_income[df_income['end_date'] == q3]
-            dflq12 = df_income[df_income['end_date'] == lq12]
-            dflq3  = df_income[df_income['end_date'] == lq3]
-   
-            if not dfq3.empty and not dflq12.empty and not dflq3.empty:
-                try:
-                    template.loc[8,y] = dfq3.iloc[0]['n_income'] + dflq12.iloc[0]['n_income'] - dflq3.iloc[0]['n_income']
-                except:
-                    logging.debug(q3+'净利润数据缺失')
-                    continue
+            template = self._getdata_one(ptemplate = template,pdate = pdate ,df_income = df_income,df_cash=df_cash,df_blc=df_blc,i=i)
+           
+        #处理y1--y6现金流
+        for i in range(endyear+1,endyear+6,1):
+            if not df_future.empty:
+                future = df_future[df_future['year'] == i]
+                print(future)
+            if i < self.thisyear:
+                template = self._getdata_one(ptemplate = template,pdate = pdate ,df_income = df_income,df_cash=df_cash,df_blc=df_blc,i=i)
+            elif not future.empty:
+                #处理future现金流
+                y = 'y'+str(i - endyear)
+                print(future.iloc[0]['n_income'])
+                print(type(future.iloc[0]['n_income']))
+                #print(future.iloc[0]['n_income'])
+                template.loc[8,y] = future.iloc[0]['n_income']*1e8
+               
             else:
-                logging.debug(q3+'净利润数据为空')
-                continue
-               
-            #9 +折旧和摊销cashflow，depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
-            #df1 = df_cash[df_cash['end_date'] == end_date]
-            dfq3   = df_cash[df_cash['end_date'] == q3]
-            dflq12 = df_cash[df_cash['end_date'] == lq12]
-            dflq3  = df_cash[df_cash['end_date'] == lq3]
-            
-            if not dfq3.empty and not dflq12.empty and not dflq3.empty:
-                #可能会因为数据缺失导致异常
-                try:
-               
-                    depr_fa_coga_dpba     =   dfq3.iloc[0]['depr_fa_coga_dpba']+dflq12.iloc[0]['depr_fa_coga_dpba']-dflq3.iloc[0]['depr_fa_coga_dpba']
-                    amort_intang_assets   =   dfq3.iloc[0]['amort_intang_assets']+dflq12.iloc[0]['amort_intang_assets']-dflq3.iloc[0]['amort_intang_assets']
-                    lt_amort_deferred_exp =   dfq3.iloc[0]['lt_amort_deferred_exp']+dflq12.iloc[0]['lt_amort_deferred_exp']-dflq3.iloc[0]['lt_amort_deferred_exp']
-                    template.loc[9,y] = depr_fa_coga_dpba + amort_intang_assets + lt_amort_deferred_exp
-        
-                    #10 +支付的利息 cashflow:c_pay_dist_dpcp_int_exp
-                    c_pay_dist_dpcp_int_exp = dfq3.iloc[0]['c_pay_dist_dpcp_int_exp']+dflq12.iloc[0]['c_pay_dist_dpcp_int_exp']-dflq3.iloc[0]['c_pay_dist_dpcp_int_exp']
-                    template.loc[10,y] = c_pay_dist_dpcp_int_exp
- 
-                    #11 -资本性支出：cashflow：c_pay_acq_const_fiolta
-                    c_pay_acq_const_fiolta = dfq3.iloc[0]['c_pay_acq_const_fiolta']+dflq12.iloc[0]['c_pay_acq_const_fiolta']-dflq3.iloc[0]['c_pay_acq_const_fiolta']
-                    template.loc[11,y] = c_pay_acq_const_fiolta*(-1)
-      
-                    #12 营运资金变动：balancesheet：y0（total_cur_assets - total_cur_liab）- y1(total_cur_assets - total_cur_liab)
-                    q31 = str(i+1)+pdate[4:] #'20181231' or 20180930，20180630，20180331 ,
-                    lq121 = str(i-1+1)+'1231' #2011231
-                    lq31 = str(i-1+1)+pdate[4:]#20171231 or 20170931 2017630 20170331
-
-                    dfq3   = df_blc[df_blc['end_date'] == q3]
-                    dflq12 = df_blc[df_blc['end_date'] == lq12]
-                    dflq3  = df_blc[df_blc['end_date'] == lq3]
-
-                    dfq31   = df_blc[df_blc['end_date'] == q31]
-                    dflq121 = df_blc[df_blc['end_date'] == lq121]
-                    dflq31  = df_blc[df_blc['end_date'] == lq31]
-         
-                    if not dfq3.empty and not dflq12.empty and not dflq3.empty:
-                        if not dfq31.empty and not dflq121.empty and not dflq31.empty:
-                           
-                            total_cur_assets1 = dfq3.iloc[0]['total_cur_assets']+dflq12.iloc[0]['total_cur_assets']-dflq3.iloc[0]['total_cur_assets']
-                            total_cur_assets2 = dfq31.iloc[0]['total_cur_assets']+dflq121.iloc[0]['total_cur_assets']-dflq31.iloc[0]['total_cur_assets']
-                            total_cur_liab1 = dfq3.iloc[0]['total_cur_liab']+dflq12.iloc[0]['total_cur_liab']-dflq3.iloc[0]['total_cur_liab']
-                            total_cur_liab2 = dfq31.iloc[0]['total_cur_liab']+dflq121.iloc[0]['total_cur_liab']-dflq31.iloc[0]['total_cur_liab']
-                            template.loc[12,y] = total_cur_assets1 - total_cur_liab1 -(total_cur_assets2 - total_cur_liab2)
-                except:
-                    logging.debug('dflq3数据为空')
-                    continue
-
+                pass
+                #template.loc[8,y] = 0
+          
         #22永续增长率设为gdp
         template.loc[22,'y-6'] = SUSTAINABLE_GROWTH_RATE
         #32，33，34带息负债，非经营负债，少数股东权益设为0
@@ -324,6 +371,12 @@ class FCFF(object):
         template.loc[33,'y-6'] = 0
         template.loc[34,'y-6'] = 0
         
+        #处理第7行，对年份的显示
+        for i in range(endyear-6,endyear+5,1):
+            y = 'y'+str(i - endyear)
+            template.loc[7,y] = i
+
+
         return template
 
     def _processdata(self,pdf):
@@ -339,14 +392,38 @@ class FCFF(object):
             df.loc[14,y1] = (df.loc[8][y1]-df.loc[8][y0])/math.fabs(df.loc[8][y0])
         
         
-        #处理第22行，用过去三年平均增长率预测未来增长率,如果增长率为负数，则取0，默认未来不会恶化
+        #处理第22行，如果增长率为负数，则取0，默认未来不会恶化
+        #如果过去两年现金流大于0，则计算过去两年增速，否则过去两年增速设为0
+        if df.loc[19,'y-1'] > 0 and df.loc[19,'y-2']>0:
+            df.loc[22,'y0'] = df.loc[19,'y0']/df.loc[19,'y-1'] -1
+            df.loc[22,'y-1'] = df.loc[19,'y-1']/df.loc[19,'y-2'] -1
+        else :
+            df.loc[22,'y0'] = 0
+            df.loc[22,'y-1'] = 0
         for i in range(1,6):
+            y0 = 'y'+str(i-1)
             y = 'y'+str(i)
-            s1 = df.loc[14:14,'y-2':'y0'].apply('mean',axis=1)
-            if s1.iloc[0] < 0 :
-                df.loc[22,y] = 0 
+            df1 = df.loc[8:12,y:y] 
+    
+            s = pd.isnull(df1)
+            #s=np.isnan(df1[y])
+            #如果利润为空，则用上一年的增速
+            if s.loc[8][y]:
+                df.loc[22,y] = df.loc[22,y0]
+            #如果有利润但是其他值为空,则用利润增速作为现金流增速
+            elif s.loc[9][y] or s.loc[10][y] or s.loc[11][y] or s.loc[12][y]:
+                if df.loc[8,y]>0 and df.loc[8,y0]>0:
+                    df.loc[22,y] = df.loc[8,y]/df.loc[8,y0] -1
+                else:
+                    df.loc[22,y] = 0
+            #即有利润又有其他值，则按照标准公式计算出现金流及增速
             else:
-                df.loc[22,y] = s1.iloc[0]
+                su = df1.apply('sum',axis=0)
+                df.loc[19,y] = su.iloc[0]
+                if df.loc[19,y]>0 and df.loc[19,y0]>0:
+                    df.loc[22,y] = df.loc[19,y]/df.loc[19,y0] -1
+                else:
+                    df.loc[22,y] = 0
  
         #处理第13行后半部分：y1-y5
  
@@ -424,13 +501,14 @@ class FCFF(object):
 
 if __name__ == '__main__':
     f = FCFF()
-    #f._testbuild()
+    f.detail_template(pcode = '000002.SZ',ptrade_date = '20171231')
     #f.build_train()
-    f.monitor_train()
+    #f.monitor_train()
     #msql = md.datamodule()
+    #msql._createdb('future_income')
     #msql.updatealldb()
     #print(msql.gettradedays())
-    #msql._push_daily_basic1()
+    #msql._pushfutureincome()
     #f._build_one_train(pcode = '300418.SZ',ptrade_date = None)#(pcode = '002008.SZ')#,ptrade_date = '20181231')
     #f._monitor_for_train(pcode = '002008.SZ')
     #f.buildone_template('002008.SZ')
