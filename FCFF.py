@@ -46,9 +46,9 @@ class FCFF(object):
     #新建训练数据，X,Y，X为截止当前某股票的grade,Y为股价相对最近一次财报日的涨幅
     #后续要考虑财报公布日期的因素
 
-    def monitor_train(self):
+    def train_FCFF_monitor(self):
         ut.thread_loop(by = 'ts_code',pFunc = self._monitor_one_train)
-    def build_train(self):
+    def train_FCFF(self):
         ut.thread_loop(by = 'ts_code',pFunc = self._build_one_train)
     #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对上一次财报日的涨幅
     #后续要考虑财报公布日期的因素
@@ -69,6 +69,7 @@ class FCFF(object):
         dfm[X_col] = 0
         dfm[Y_col] = 0
         dfm['evaluation'] = 0
+        dfm['PEG'] = 0
 
         dfm['trade_date'] = dfm['trade_date'].apply(lambda x:int(x))
         dfm = dfm.drop_duplicates('trade_date')
@@ -90,10 +91,10 @@ class FCFF(object):
             s = df.iloc[0]['trade_date']
             e = df.iloc[l-1]['trade_date']   
             dfm.loc[s:e,'evaluation'] = row['evaluation']    
-
             #df[Y_col] = (df['total_mv'] - df.iloc[0]['total_mv']) / df.iloc[0]['total_mv']
             dfm.loc[s:e,Y_col] = (df['total_mv'] - df.iloc[0]['total_mv']) / df.iloc[0]['total_mv']
 
+            dfm.loc[s:e,'PEG'] = df['pe_ttm'] / (row['y0_grow_rate']*100)
         dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
 
         #dfm = msql.joinnames(df_basic)
@@ -191,7 +192,7 @@ class FCFF(object):
              
         df_rslt = self._buildtemplate(df = df_template,code = pcode,pdate = ptrade_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future = df_future)
         
-        filepath = config.detaildir(pcode,pcode+'template.csv')
+        filepath = config.detaildir(pcode,pcode+ptrade_date+'template.csv')
         df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)        
 
     def _build_one_train(self,pcode = None,ptrade_date = None):
@@ -347,20 +348,19 @@ class FCFF(object):
            
         #处理y1--y6现金流
         for i in range(endyear+1,endyear+6,1):
+            future = pd.DataFrame()
             if not df_future.empty:
                 future = df_future[df_future['year'] == i]
-                print(future)
             if i < self.thisyear:
                 template = self._getdata_one(ptemplate = template,pdate = pdate ,df_income = df_income,df_cash=df_cash,df_blc=df_blc,i=i)
             elif not future.empty:
                 #处理future现金流
                 y = 'y'+str(i - endyear)
-                print(future.iloc[0]['n_income'])
-                print(type(future.iloc[0]['n_income']))
                 #print(future.iloc[0]['n_income'])
                 template.loc[8,y] = future.iloc[0]['n_income']*1e8
                
             else:
+                #保持空
                 pass
                 #template.loc[8,y] = 0
           
@@ -501,8 +501,8 @@ class FCFF(object):
 
 if __name__ == '__main__':
     f = FCFF()
-    f.detail_template(pcode = '000002.SZ',ptrade_date = '20171231')
-    #f.build_train()
+    f.detail_template(pcode = '000039.SZ',ptrade_date = '20181231')
+    #f.train_FCFF()
     #f.monitor_train()
     #msql = md.datamodule()
     #msql._createdb('future_income')
