@@ -9,9 +9,10 @@ import os
 import math
 import logging
 import util as ut
+from scipy import stats
 
 SUSTAINABLE_GROWTH_RATE = 0.06
-
+    
 def _fun(x):
     if x >= 5:
         return 5
@@ -229,16 +230,23 @@ class FCFF(object):
                 dic['ts_code'] = [pcode]
                 dic['evaluation'] = [df1['y-6'][37]]
                 dic['end_date'] = [date]
-                dic['sus_grow_rate'] = [df1['y-6'][22]]
-                dic['y1_grow_rate'] = [df1['y1'][22]]
-                dic['y2_grow_rate'] = [df1['y2'][22]]
-                dic['y3_grow_rate'] = [df1['y3'][22]]
-                dic['y4_grow_rate'] = [df1['y4'][22]]
-                dic['y5_grow_rate'] = [df1['y5'][22]]
+
+                dic['y0_flow'] = [df1['y0'][13]]
+                dic['y-1_flow'] = [df1['y-1'][13]]
+                dic['y-2_flow'] = [df1['y-2'][13]]
+
+                dic['y0_income'] = [df1['y0'][8]]
+                dic['y-1_income'] = [df1['y-1'][8]]
+                dic['y-2_income'] = [df1['y-2'][8]]
 
                 dic['y0_grow_rate'] = [df1['y0'][14]]
                 dic['y-1_grow_rate'] = [df1['y-1'][14]]
                 dic['y-2_grow_rate'] = [df1['y-2'][14]]
+
+                dic['sus_grow_rate'] = [df1['y-6'][22]]
+                dic['y1_grow_rate'] = [df1['y1'][22]]
+                dic['y2_grow_rate'] = [df1['y2'][22]]
+
         
                 df2 = pd.DataFrame.from_dict(dic)
                 df_rslt = pd.concat([df_rslt,df2.loc[0:0,]],ignore_index = True)
@@ -250,6 +258,7 @@ class FCFF(object):
     
         filepath=self._trainpath(pcode)
         df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
+        self._monitor_one_train(pcode = pcode)
     
     def _buildtemplate(self,df,code,pdate,df_income,df_cash,df_blc,df_future):
         df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
@@ -305,6 +314,11 @@ class FCFF(object):
                 #11 -资本性支出：cashflow：c_pay_acq_const_fiolta
                 c_pay_acq_const_fiolta = dfq3.iloc[0]['c_pay_acq_const_fiolta']+dflq12.iloc[0]['c_pay_acq_const_fiolta']-dflq3.iloc[0]['c_pay_acq_const_fiolta']
                 template.loc[11,y] = c_pay_acq_const_fiolta*(-1)
+
+                #15 从tushare直接获取自由现金流，用于对比
+      
+                template.loc[15,y] = dfq3.iloc[0]['free_cashflow']
+                template.loc[15,'name'] = '从ts获取的自由现金流'
     
                 #12 营运资金变动：balancesheet：y0（total_cur_assets - total_cur_liab）- y1(total_cur_assets - total_cur_liab)
                 q31 = str(i+1)+pdate[4:] #'20181231' or 20180930，20180630，20180331 ,
@@ -372,10 +386,9 @@ class FCFF(object):
         template.loc[34,'y-6'] = 0
         
         #处理第7行，对年份的显示
-        for i in range(endyear-6,endyear+5,1):
+        for i in range(endyear-6,endyear+6,1):
             y = 'y'+str(i - endyear)
             template.loc[7,y] = i
-
 
         return template
 
@@ -394,9 +407,9 @@ class FCFF(object):
         
         #处理第22行，如果增长率为负数，则取0，默认未来不会恶化
         #如果过去两年现金流大于0，则计算过去两年增速，否则过去两年增速设为0
-        if df.loc[19,'y-1'] > 0 and df.loc[19,'y-2']>0:
-            df.loc[22,'y0'] = df.loc[19,'y0']/df.loc[19,'y-1'] -1
-            df.loc[22,'y-1'] = df.loc[19,'y-1']/df.loc[19,'y-2'] -1
+        if df.loc[13,'y-1'] > 0 and df.loc[13,'y-2']>0:
+            df.loc[22,'y0'] = df.loc[13,'y0']/df.loc[13,'y-1'] -1
+            df.loc[22,'y-1'] = df.loc[13,'y-1']/df.loc[13,'y-2'] -1
         else :
             df.loc[22,'y0'] = 0
             df.loc[22,'y-1'] = 0
@@ -411,7 +424,7 @@ class FCFF(object):
             if s.loc[8][y]:
                 df.loc[22,y] = df.loc[22,y0]
             #如果有利润但是其他值为空,则用利润增速作为现金流增速
-            elif s.loc[9][y] or s.loc[10][y] or s.loc[11][y] or s.loc[12][y]:
+            elif s.loc[9][y] and s.loc[10][y] and s.loc[11][y] and s.loc[12][y]:
                 if df.loc[8,y]>0 and df.loc[8,y0]>0:
                     df.loc[22,y] = df.loc[8,y]/df.loc[8,y0] -1
                 else:
@@ -419,12 +432,10 @@ class FCFF(object):
             #即有利润又有其他值，则按照标准公式计算出现金流及增速
             else:
                 su = df1.apply('sum',axis=0)
-                df.loc[19,y] = su.iloc[0]
-                if df.loc[19,y]>0 and df.loc[19,y0]>0:
-                    df.loc[22,y] = df.loc[19,y]/df.loc[19,y0] -1
-                else:
-                    df.loc[22,y] = 0
- 
+                df.loc[13,y] = su.iloc[0]
+                df.loc[23,y] = 'T' #标记已经处理了现金流，不需要处理了
+                #df.loc[22,y] = df.loc[13,y]/df.loc[13,y0] -1
+        
         #处理第13行后半部分：y1-y5
  
         for i in range(0,5):
@@ -435,7 +446,10 @@ class FCFF(object):
             #数据质量比较差，如果没有上一年数据，则向前找一年数据
             if s == 0 :
                 s = df.loc[13][y_1]
-            df.loc[13,y1] = s*(1+df.loc[22][y1])
+                df.loc[13][y0] = df.loc[13][y_1]
+            #如果没有用标准公式得到现金流，则用增速得到现金流
+            if not df.loc[23,y] == 'T':
+                df.loc[13,y1] = s*(1+df.loc[22][y1])
 
         #处理第19行
         for i in range(-7,6):
@@ -454,8 +468,9 @@ class FCFF(object):
         df.loc[26,'y-6'] = df['y5'][13] * (1+df['y-6'][22]) / ( df['y-6'][16 ]- df['y-6'][22] ) * df['y5'][18]
    
         #处理第27行
-        df.loc[27,'y-6'] =  df['y-6'][24] + df['y-6'][25] + df['y-6'][26] 
-
+        #df.loc[27,'y-6'] =  df['y-6'][24] + df['y-6'][25] + df['y-6'][26] 
+        df.loc[27,'y-6'] =  df['y0'][19] + df['y-6'][25] + df['y-6'][26]
+        
         #处理第35行
         df.loc[35,'y-6'] =  df['y-6'][27] + df['y-6'][32] + df['y-6'][33] #+ df['y-6'][34] 
 
@@ -466,16 +481,23 @@ class FCFF(object):
         df.loc[37,'y-6'] = df.loc[35]['y-6'] + df.loc[36]['y-6'] 
         return df
 
-    def plot(self):
-        filepath = self._trainpath('monitor_'+'002008.SZ')
+    def plot(self,ts_code):
+        filepath = self._trainpath('monitor_'+ts_code)
         dfm = pd.read_csv(filepath,index_col = None)
+        dfm['X'] = (dfm['evaluation']/10000)/dfm['total_share']/2
+        dfm['Y'] = dfm['total_mv']/dfm['total_share']
+        dfm['trade_date'] = dfm['trade_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
         #df = dfm.loc[300:3000,'市场高估比率']
         #print(df)
         #df = dfm.loc['300287.SZ':'603881.SH','市场高估比率']
         #df.plot.kde()
         #plt.savefig('D:\test.png')
-        dfm.plot(x='X',y='Y',kind = 'scatter')
-     
+        #dfm.plot(x='X',y='Y',kind = 'scatter')
+
+        Pearson = stats.pearsonr(dfm['X'],dfm['Y'])
+        print(Pearson)
+        plt.plot_date(dfm['trade_date'],dfm['X'])
+        plt.plot_date(dfm['trade_date'],dfm['Y'])
         plt.show()
 
     def _trainpath(self,file):
@@ -501,7 +523,7 @@ class FCFF(object):
 
 if __name__ == '__main__':
     f = FCFF()
-    f.detail_template(pcode = '000039.SZ',ptrade_date = '20181231')
+    f.detail_template(pcode = '000651.SZ',ptrade_date = '20180630')
     #f.train_FCFF()
     #f.monitor_train()
     #msql = md.datamodule()
@@ -511,8 +533,8 @@ if __name__ == '__main__':
     #msql._pushfutureincome()
     #f._build_one_train(pcode = '300418.SZ',ptrade_date = None)#(pcode = '002008.SZ')#,ptrade_date = '20181231')
     #f._monitor_for_train(pcode = '002008.SZ')
-    #f.buildone_template('002008.SZ')
-    #f.plot()
+ 
+    #f.plot('000651.SZ')
     #d = f.monitor('000002.SZ')
     #print(d)
     
