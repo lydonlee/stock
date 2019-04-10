@@ -21,7 +21,7 @@ for path in MODULE_PATH.values():
 
 if 'Windows' in platform.uname() :
     db_update_day = ['daily_basic','daily_basic_ts_code','margin_detail']
-    db_update_quter = ['balancesheet','cashflow','dividend','trade_cal','stock_basic','income','future_income']
+    db_update_quter = ['fina_indicator','balancesheet','cashflow','dividend','trade_cal','stock_basic','income','future_income']
     #db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic','income','future_income']
 else:
     db_func_list = ['daily_basic_ts_code','dividend']
@@ -46,7 +46,6 @@ configs = {
     },
     'dividend':{
         'dividend_csv'  : os.path.join(MODULE_PATH['data'],'dividend.csv'),
-
     },
     'FCFF':{
         'FCFF_csv'      : os.path.join(MODULE_PATH['data'],'FCFF.csv'),
@@ -54,6 +53,9 @@ configs = {
         'monitor_FCFF_csv':os.path.join(MODULE_PATH['data'],'monitor_FCFF.csv'),
         'logfile_path'  :os.path.join(MODULE_PATH['data'],'log.txt'),
     },
+    'Regression':{
+        'Regression_csv'    :os.path.join(MODULE_PATH['data'],'Regression.csv'),
+    }
 }
 
 # Simple dict but support access as x.y style.

@@ -3,15 +3,17 @@ import numpy as np
 from sklearn import linear_model
 from scipy import stats
 import matplotlib.pyplot as plt
+import config
 
 # 归一化
 def normalization(series):
     return (series - min(series))/(max(series) - min(series)) 
 
-class regression(object):
+class Regression(object):
     def __init__(self):
-        factors = ['n_income','evaluation','n_asset','grow_rate','dividend']
-        pass
+        cfg = config.configs.Regression
+        self.r_csv = cfg.Regression_csv
+        #factors = fina_indicator.columns.values.tolist()#['n_income','evaluation','n_asset','grow_rate','dividend']
     def linear_model(self):
         clf = linear_model.LinearRegression()
         clf.fit(self.trainMat,self.trainY)
@@ -40,49 +42,54 @@ class regression(object):
                 best_lam = lam
                 best_err = err
         return best_lam
+    def build_Regression(self):
+        ut.thread_loop(by = 'ts_code',pFunc = self._build_one_train)
 
+    def _build_one_train(self,pcode = None):
+        if pcode == None:
+            return
+
+        msql = md.datamodule()
+        df_fina = msql.pull_mysql(db = 'fina_indicator',ts_code = pcode)
+        df_basic = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode)
+        df_fina['price'] = df_basic[df_basic['end_date'] == ]
+
+        df_rslt = pd.DataFrame()
     def getdata(self):
         df = pd.read_csv("data_3.csv")
         del df['Unnamed: 0']
         df = df.dropna()
 
-        df['Gain'] = 100*normalization(df['Gain'])  # 这里乘以了100，主要是为了方便观察回归系数，否则系数太小。
-
-        df['PE'] = normalization(df['PE'])
-        df['LFLO'] = normalization(df['LFLO'])
-        df['NetProfitGrowRate'] = normalization(df['NetProfitGrowRate'])
-        df['MoneyFlow20'] = normalization(df['MoneyFlow20'])
-        df['PB'] = normalization(df['PB'])
-        df['AccountsPayablesTRate'] = normalization(df['AccountsPayablesTRate'])
-        df['ROE'] = normalization(df['ROE'])
-        df['FiftyTwoWeekHigh'] = normalization(df['FiftyTwoWeekHigh'])
+        factors = fina_indicator.columns.values.tolist()
+        ncol = len(factors)
+        ndf = len(df)
+        nd = round(ndf/3)
 
         # 矩阵化
         rawmat = np.mat(df)
-        mat = rawmat[:,2:10]
-        y = rawmat[:,10]
+        mat = rawmat[:,2:ncol]
+        y = rawmat[:,ncol]
 
         # 数据集划分
-        self.trainMat = mat[0:4000] 
-        self.testMat = mat[4000:]
-        self.trainY = y[0:4000]
-        self.testY = y[4000:]
+        self.trainMat = mat[0:nd] 
+        self.testMat = mat[nd:nd*2]
+        self.trainY = y[0:nd]
+        self.testY = y[nd:nd*2]
     
-    def plot(self,ts_code):
-        filepath = self._trainpath('monitor_'+ts_code)
-        dfm = pd.read_csv(filepath,index_col = None)
-        dfm['X'] = (dfm['evaluation']/10000)/dfm['total_share']/2
-        dfm['Y'] = dfm['total_mv']/dfm['total_share']
-        dfm['trade_date'] = dfm['trade_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
-        #df = dfm.loc[300:3000,'市场高估比率']
-        #print(df)
-        #df = dfm.loc['300287.SZ':'603881.SH','市场高估比率']
-        #df.plot.kde()
-        #plt.savefig('D:\test.png')
-        #dfm.plot(x='X',y='Y',kind = 'scatter')
-
+    def plot(self):
+        dfm['X'] = np.dot(self.trainMate,self.weights_lasso)
+        dfm['Y'] = self.trainY
         Pearson = stats.pearsonr(dfm['X'],dfm['Y'])
         print(Pearson)
-        plt.plot_date(dfm['trade_date'],dfm['X'])
-        plt.plot_date(dfm['trade_date'],dfm['Y'])
+        plt.plot_date(dfm['X'],dfm['Y'])
         plt.show()
+
+    if __name__ == '__main__':
+        msql = md.datamodule()
+        msql.updatedbone(self,db1 = 'fina_indicator',firsttime=1)
+
+        reg = Regression()
+        reg.getdata()
+        reg.lasso_model()
+        reg.plot()
+

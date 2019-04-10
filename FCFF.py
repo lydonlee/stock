@@ -389,6 +389,11 @@ class FCFF(object):
         for i in range(endyear-6,endyear+6,1):
             y = 'y'+str(i - endyear)
             template.loc[7,y] = i
+        #处理34行，少数股东权益
+        dftemp = df_blc[df_blc['end_date'] == pdate]
+        if not dftemp.empty:
+            template.loc[34,'y-6'] = 0-df34.iloc[0]['minority_int']
+            template.loc[32,'y-6'] = 0-df34.iloc[0]['bond_payable']
 
         return template
 
@@ -472,7 +477,7 @@ class FCFF(object):
         df.loc[27,'y-6'] =  df['y0'][19] + df['y-6'][25] + df['y-6'][26]
         
         #处理第35行
-        df.loc[35,'y-6'] =  df['y-6'][27] + df['y-6'][32] + df['y-6'][33] #+ df['y-6'][34] 
+        df.loc[35,'y-6'] =  df['y-6'][27] + df['y-6'][32] + df['y-6'][33] + df['y-6'][34] 
 
         #处理第36行
         df.loc[36,'y-6'] = 0

@@ -34,7 +34,7 @@ class datamodule(object):
                 sql_cmd = 'select * from `'+ts_code + '`' +'order by trade_date DESC'
             else:
                 sql_cmd = 'select * from `'+ts_code + '`' +'where trade_date = '+date
-        elif db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet':
+        elif db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet' or db == 'fina_indicator':
             sql_cmd = 'select * from `'+ts_code + '`'
         elif db == 'future_income':
             sql_cmd = 'select * from future_income where ts_code ='+ts_code[:-3]
@@ -120,7 +120,7 @@ class datamodule(object):
         yconnect.dispose()
 
     def _getstock_basic(self):
-        concmd = self.mysqlcmd.format('trade_cal')
+        concmd = self.mysqlcmd.format('stock_basic')
         yconnect = create_engine(concmd) 
         df = pd.DataFrame()
        
@@ -205,9 +205,37 @@ class datamodule(object):
         df['ts_code'] = df['ts_code'].apply(lambda x: _lower(x))
         return df
 
-    def updatealldb(self,firsttime = 0,daily = True,quter=False):
-        self._init_tushare()
+    def updatedbone(self,db1 = 'stock_basic',firsttime=0):
+
         now = datetime.datetime.now().strftime('%Y%m%d')
+        try:
+            s = self.getlatestday(db1)
+        except:
+            print('not find database,the first time update!')
+            firsttime = 1
+            s = '19950101'
+        if firsttime == 1:
+            try :
+                self._createdb(db1)
+            except Exception as e:
+                print(e)
+        if s == now:
+            print('already the latest db!')
+            continue
+        elif db1 == 'daily_basic_ts_code':
+            self._push_daily_basic(start=s,end=now,firsttime=firsttime)
+        elif db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet' or db1 =='fina_indicator':
+            self._push_by_code(db1)
+        elif db1 == 'stock_basic' or db1 == 'trade_cal' :
+            self._push_db(db1)
+        elif db1 == 'future_income':
+            self._pushfutureincome()
+        else:
+            self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
+
+    def updatedball(self,firsttime = 0,daily = True,quter=False):
+        self._init_tushare()
+       
         cfg = config.configs.module
         if daily and quter:
             db_list = cfg.db_update_day + cfg.db_update_quter
@@ -216,36 +244,16 @@ class datamodule(object):
         elif quter:
             db_list = cfg.db_update_quter
                       
-         
         for db1 in db_list:
-            try:
-                s = self.getlatestday(db1)
-            except:
-                print('not find database,the first time update!')
-                firsttime = 1
-                s = '19950101'
-            if s == now:
-                print('already the latest db!')
-                continue
-            elif db1 == 'daily_basic_ts_code':
-                self._push_daily_basic(start=s,end=now,firsttime=firsttime)
-            elif db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet':
-                self._push_by_code(db1)
-            elif db1 == 'stock_basic' or db1 == 'trade_cal':
-                self._push_db(db1)
-            elif db1 == 'future_income':
-                self._pushfutureincome()
-            else:
-                self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
-            
+            self.updatedbone(db1 = db1,firsttime=firsttime)
             self.fix_db(db = db1)
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
     def fix_db(self,db = 'daily_basic_ts_code'):
         self._init_tushare()
-        if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet'):
+        if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet' or db == 'fina_indicator'):
             self._fix_by_ts_code(sqldb=db) 
-        elif db == 'stock_basic' or db == 'trade_cal' or db =='future_income':
+        elif db == 'stock_basic' or db == 'trade_cal' or db =='future_income' :
             return
         else:
             self._fix_by_time(db)
