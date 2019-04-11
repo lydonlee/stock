@@ -6,23 +6,6 @@ from module import module as md
 from threading import Thread
 from selenium import webdriver
 
-def geturl(url = ''):
-        chrome_options = webdriver.ChromeOptions()
-        prefs = {"profile.managed_default_content_settings.images": 2,
-                 'profile.default_content_setting_values' :{'notifications' : 2}
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
-
-        #browser = webdriver.Chrome('/Users/liligong/anaconda/lib/python3.6/site-packages/chromedriver',
-        #                           chrome_options=chrome_options)
-        #browser = webdriver.Remote("http://localhost:4444/wd/hub", webdriver.DesiredCapabilities.HTMLUNITWITHJS)
-        browser = webdriver.Chrome(chrome_options=chrome_options)
-        browser.implicitly_wait(10)
-        try:
-            browser.get(url)
-        except Exception as e:
-            print(e)
-        return browser
 #yagmail.register('904721093@qq.com', 'aaaaaaa')
 def sendmail(mailcontent = 'this is content'):
 

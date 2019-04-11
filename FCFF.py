@@ -20,6 +20,12 @@ def _fun(x):
         return -5
     return x
 
+def func1(x):
+    try:
+        return float(x)
+    except:
+        return None
+
 class FCFF(object):
     def __init__(self):
         cfg = config.configs.FCFF
@@ -354,7 +360,7 @@ class FCFF(object):
         #如果输入的pdate是整年1231，则获取过去7年的年报，如果pdate是‘ 0930，0630，0331’等季度，则滚动前四季度记为一年
         endyear = int(pdate[0:4])
         df_future['year'] = df_future['year'].apply(lambda x:int(x))
-        df_future['n_income'] = df_future['n_income'].apply(lambda x:float(x))
+        df_future['n_income'] = df_future['n_income'].apply(lambda x:func1(x))
 
         #处理y0 --y-7 的现金流
         for i in range(endyear,endyear- 7,-1):
@@ -392,8 +398,11 @@ class FCFF(object):
         #处理34行，少数股东权益
         dftemp = df_blc[df_blc['end_date'] == pdate]
         if not dftemp.empty:
-            template.loc[34,'y-6'] = 0-df34.iloc[0]['minority_int']
-            template.loc[32,'y-6'] = 0-df34.iloc[0]['bond_payable']
+            t = pd.isnull(dftemp)
+            if not t.iloc[0]['minority_int']:
+                template.loc[34,'y-6'] = 0-dftemp.iloc[0]['minority_int']
+            if not t.iloc[0]['bond_payable']:
+                template.loc[32,'y-6'] = 0-dftemp.iloc[0]['bond_payable']
 
         return template
 
@@ -448,10 +457,10 @@ class FCFF(object):
             y0 = 'y'+str(i)
             y1 = 'y'+str(i+1)
             s = df.loc[13][y0]
-            #数据质量比较差，如果没有上一年数据，则向前找一年数据
+            #数据质量比较差，如果没有上一年数据，则向前找一年数据,并且将缺失的数据用前一年数据补齐
             if s == 0 :
                 s = df.loc[13][y_1]
-                df.loc[13][y0] = df.loc[13][y_1]
+                df.loc[13,y0] = s
             #如果没有用标准公式得到现金流，则用增速得到现金流
             if not df.loc[23,y] == 'T':
                 df.loc[13,y1] = s*(1+df.loc[22][y1])
@@ -528,12 +537,13 @@ class FCFF(object):
 
 if __name__ == '__main__':
     f = FCFF()
-    f.detail_template(pcode = '000651.SZ',ptrade_date = '20180630')
+    #f.detail_template(pcode = '000651.SZ',ptrade_date = '20180630')
     #f.train_FCFF()
     #f.monitor_train()
-    #msql = md.datamodule()
-    #msql._createdb('future_income')
-    #msql.updatealldb()
+    msql = md.datamodule()
+    #msql._init_tushare()
+    #msql._push_daily_basic(start='19940101',end='20011118',firsttime = 0)
+    msql.updatedball(daily = False,quter=True)
     #print(msql.gettradedays())
     #msql._pushfutureincome()
     #f._build_one_train(pcode = '300418.SZ',ptrade_date = None)#(pcode = '002008.SZ')#,ptrade_date = '20181231')

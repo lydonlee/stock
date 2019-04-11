@@ -55,6 +55,7 @@ configs = {
     },
     'Regression':{
         'Regression_csv'    :os.path.join(MODULE_PATH['data'],'Regression.csv'),
+        'Regression_cfg'    :os.path.join(MODULE_PATH['data'],'Regression.cfg'),
     }
 }
 

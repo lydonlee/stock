@@ -5,7 +5,8 @@ from sqlalchemy.ext.declarative import declarative_base
 import datetime
 import csv
 import config
-import util as ut
+import time
+
 def _lower(x):
     return x.lower()
 class datamodule(object):
@@ -14,6 +15,7 @@ class datamodule(object):
         #self.db_func_list = cfg.db_func_list
         self.mysqlrecord = cfg.mysqlrecord
         self.mysqlcmd = cfg.mysqlcmd
+        
     def _init_tushare(self):
         ts.set_token('1360474e70eee70c9c1b9740d684a8800e89903641c6ffb82ac549da')
         self.pro = ts.pro_api()
@@ -71,6 +73,7 @@ class datamodule(object):
 
         for index, code in df1.iterrows():
             ts_code = code['ts_code'].lower()
+            time.sleep(1)
             try:
                 if firsttime == 1:
                     df = self.pro.query('daily_basic',ts_code = ts_code)
@@ -206,7 +209,7 @@ class datamodule(object):
         return df
 
     def updatedbone(self,db1 = 'stock_basic',firsttime=0):
-
+        self._init_tushare()
         now = datetime.datetime.now().strftime('%Y%m%d')
         try:
             s = self.getlatestday(db1)
@@ -221,7 +224,7 @@ class datamodule(object):
                 print(e)
         if s == now:
             print('already the latest db!')
-            continue
+            return
         elif db1 == 'daily_basic_ts_code':
             self._push_daily_basic(start=s,end=now,firsttime=firsttime)
         elif db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet' or db1 =='fina_indicator':
@@ -234,8 +237,7 @@ class datamodule(object):
             self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
 
     def updatedball(self,firsttime = 0,daily = True,quter=False):
-        self._init_tushare()
-       
+        
         cfg = config.configs.module
         if daily and quter:
             db_list = cfg.db_update_day + cfg.db_update_quter
@@ -305,6 +307,23 @@ class datamodule(object):
         sqlcmd = "create database " + db
         conn.execute(sqlcmd)
         conn.close()
+    def geturl(self,url = ''):
+        chrome_options = webdriver.ChromeOptions()
+        prefs = {"profile.managed_default_content_settings.images": 2,
+                 'profile.default_content_setting_values' :{'notifications' : 2}
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
+
+        #browser = webdriver.Chrome('/Users/liligong/anaconda/lib/python3.6/site-packages/chromedriver',
+        #                           chrome_options=chrome_options)
+        #browser = webdriver.Remote("http://localhost:4444/wd/hub", webdriver.DesiredCapabilities.HTMLUNITWITHJS)
+        browser = webdriver.Chrome(chrome_options=chrome_options)
+        browser.implicitly_wait(10)
+        try:
+            browser.get(url)
+        except Exception as e:
+            print(e)
+        return browser
 
     def _pushfutureincome(self):
         db = 'future_income'
@@ -313,7 +332,7 @@ class datamodule(object):
         df = pd.DataFrame()
         url_formate = 'http://stockpage.10jqka.com.cn/{}/worth/#forecast'
         dft = self.getts_code()
-        driver = ut.geturl()
+        driver = self.geturl()
         for index, code in dft.iterrows():
             ts_code = code['ts_code'][:-3]
             url = url_formate.format(ts_code)
