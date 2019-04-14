@@ -10,7 +10,9 @@ import math
 import logging
 import util as ut
 from scipy import stats
-
+# monitor ：用每天的数据和季度估值做比较，输出所有股票的当前估值 
+#train_FCFF_monitor：输出某只股票的所有历史估值
+#detail_template
 SUSTAINABLE_GROWTH_RATE = 0.06
     
 def _fun(x):
@@ -111,12 +113,12 @@ class FCFF(object):
         dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
 
-    #用每天的数据和季度估值做比较，每天调用 ,pdate参数是为了给onbar用的   
+    #用每天的数据和季度估值做比较，每天调用    
     def monitor(self,pcode = None,pdate = None):
-        if not pdate == None:
+        msql = md.datamodule()
+        if pdate != None:
             latestday = pdate
         else:
-            msql = md.datamodule()
             latestday = msql.getlatestday('daily_basic')
         dfm = pd.DataFrame()
         if pcode != None :
@@ -130,10 +132,12 @@ class FCFF(object):
                 print('没找到:'+self.monitor_csv,'重新建立')
 
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
+        if df_now.empty:
+            return df_now
         df_now.set_index(["ts_code"], inplace=True,drop = True) 
 
         df_basic = pd.read_csv(self.FCFF_csv,index_col = 0)
-        df_basic.set_index(["ts_code"], inplace=True,drop = True)
+        #df_basic.set_index(["ts_code"], inplace=True,drop = True)
         df_basic['lastupdate'] = latestday
         df_basic['total_mv'] = df_now['total_mv']*10000
         df_basic['市场低估比率'] = (df_basic['evaluation'] - df_now['total_mv']*10000)/(df_now['total_mv']*10000)
@@ -166,7 +170,8 @@ class FCFF(object):
             df_income = msql.pull_mysql(db = 'income',ts_code = code['ts_code'])
             df_cash = msql.pull_mysql(db = 'cashflow',ts_code = code['ts_code'])
             df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = code['ts_code'])
-            df1 = self._buildtemplate(df = df_template,code = code['ts_code'],pdate = end_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
+            df_future = msql.pull_mysql(db = 'future_income',ts_code = code['ts_code'])
+            df1 = self._buildtemplate(df = df_template,code = code['ts_code'],pdate = end_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
             if df1.empty:
                 continue
             dic = {}
@@ -542,13 +547,15 @@ class FCFF(object):
 
 if __name__ == '__main__':
     f = FCFF()
-    #f.detail_template(pcode = '000651.SZ',ptrade_date = '20180630')
+    #f.build_for_monitor()
+    #f.monitor()
+    f.detail_template(pcode = '002672.SZ',ptrade_date = '20181231')
     #f.train_FCFF()
     #f.monitor_train()
-    msql = md.datamodule()
+    #msql = md.datamodule()
     #msql._init_tushare()
     #msql._push_daily_basic(start='19940101',end='20011118',firsttime = 0)
-    msql.updatedball(daily = False,quter=True)
+    #msql.updatedball(daily = False,quter=True)
     #print(msql.gettradedays())
     #msql._pushfutureincome()
     #f._build_one_train(pcode = '300418.SZ',ptrade_date = None)#(pcode = '002008.SZ')#,ptrade_date = '20181231')

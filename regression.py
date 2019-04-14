@@ -11,7 +11,13 @@ import config
 # 归一化
 def normalization(series):
     return (series - min(series))/(max(series) - min(series)) 
-
+CONFIG = {
+    'trainStart' :   0,
+    'trainEnd'   :  200,
+    'testStart'  :  201,
+    'testEnd'    :  300,
+    'features'   :  ["X1", "X2"],
+}
 class Regression(object):
     def __init__(self):
         cfg = config.configs.Regression
@@ -19,6 +25,9 @@ class Regression(object):
         self.df_rslt = pd.DataFrame()
         self.sem = threading.Semaphore(1)
         self.regconfig_cfg = cfg.Regression_cfg
+        self.CONFIG={}
+        self.weights_lasso = None
+        self.weights_OLS = None
         #需要转变为每股收益的columne
         self.col_list = ['tangible_asset','extra_item','profit_dedt','ebitda','gross_margin','op_income','ebit','fcff','fcfe','current_exint','noncurrent_exint','interestdebt','netdebt','working_capital','networking_capital','invest_capital','retained_earnings','fixed_assets']
         #self.loadconfig()
@@ -35,13 +44,14 @@ class Regression(object):
         self.CONFIG['trainEnd'] = self.trainEnd
         self.CONFIG['testStart'] = self.testStart
         self.CONFIG['testEnd'] = self.testEnd
-        self.CONFIG['featuresStart'] = self.featuresStart
-        self.CONFIG['featuresEnd'] = self.featuresEnd
+        self.CONFIG['features'] = self.features
         self.CONFIG['DATA_FILENAME'] = self.r_csv
         self.CONFIG['weights'] = self.weights_lasso
         self.CONFIG['weights_OLS'] = self.weights_OLS
         self.CONFIG['weights_weights_lasso'] = self.weights_lasso
         np.save(self.regconfig_cfg, self.CONFIG) 
+
+
 
     def linear_model(self):
         clf = linear_model.LinearRegression()
@@ -78,7 +88,7 @@ class Regression(object):
         return best_lam
     def build_Regression(self):
         ut.thread_loop(by = 'ts_code',pFunc = self._build_one_train)
-        self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
+        #self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
 
     def _build_one_train(self,pcode = None):
         if pcode == None:
@@ -105,7 +115,7 @@ class Regression(object):
                 df_fina.loc[i,col] = df_fina.loc[i,col]/total_share
         self.sem.acquire()
         self.df_rslt = pd.concat([self.df_rslt,df_fina],ignore_index = True)
-        #self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
+        self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
         self.sem.release()
 
     def _findtradeday(self,pdf,pdate):
@@ -125,8 +135,8 @@ class Regression(object):
         self.trainEnd = nd
         self.testStart = nd
         self.testEnd = nd*2
-        self.featuresStart = 4
-        self.featuresEnd = 109
+        self.features= df.columns.values.tolist()
+        self.features = self.features[4:109]
 
         # 矩阵化
         rawmat = np.mat(df)
@@ -164,16 +174,20 @@ class Regression(object):
 
         plt.show()
 
+    def train(self):
+        reg.getdata()
+        reg.lasso_model()
+        reg.saveconfig()
+        reg.plot()
+
 if __name__ == '__main__':
     #msql = md.datamodule()
     #msql.updatedbone(db1 = 'fina_indicator',firsttime=1)
     reg = Regression()
-    reg.build_Regression()
-    #reg._build_one_train('000002.SZ')
 
-    #reg.getdata()
-    #reg.lasso_model()
-    #reg.plot()
+    #reg.build_Regression()
+    #reg._build_one_train('000002.SZ')
+    reg.train()
 
 
 
