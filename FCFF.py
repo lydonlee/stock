@@ -111,10 +111,13 @@ class FCFF(object):
         dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
 
-    #用每天的数据和季度估值做比较，每天调用    
-    def monitor(self,pcode = None):
-        msql = md.datamodule()
-        latestday = msql.getlatestday('daily_basic')
+    #用每天的数据和季度估值做比较，每天调用 ,pdate参数是为了给onbar用的   
+    def monitor(self,pcode = None,pdate = None):
+        if not pdate == None:
+            latestday = pdate
+        else:
+            msql = md.datamodule()
+            latestday = msql.getlatestday('daily_basic')
         dfm = pd.DataFrame()
         if pcode != None :
             try:
@@ -142,6 +145,8 @@ class FCFF(object):
         df_basic['grade'] = df_basic['市场低估比率'].apply(lambda x: _fun(x))
 
         df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',index = True)
+        if pdate !=None:
+            return df_basic
         if pcode != None:
             return df_basic.loc[pcode]
     

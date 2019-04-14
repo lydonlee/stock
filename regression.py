@@ -11,13 +11,7 @@ import config
 # 归一化
 def normalization(series):
     return (series - min(series))/(max(series) - min(series)) 
-CONFIG = {
-    'trainStart' :   0,
-    'trainEnd'   :  200,
-    'testStart'  :  201,
-    'testEnd'    :  300,
-    'features'   :  ["X1", "X2"],
-}
+
 class Regression(object):
     def __init__(self):
         cfg = config.configs.Regression
@@ -42,13 +36,12 @@ class Regression(object):
         self.CONFIG['testStart'] = self.testStart
         self.CONFIG['testEnd'] = self.testEnd
         self.CONFIG['featuresStart'] = self.featuresStart
+        self.CONFIG['featuresEnd'] = self.featuresEnd
         self.CONFIG['DATA_FILENAME'] = self.r_csv
         self.CONFIG['weights'] = self.weights_lasso
         self.CONFIG['weights_OLS'] = self.weights_OLS
         self.CONFIG['weights_weights_lasso'] = self.weights_lasso
         np.save(self.regconfig_cfg, self.CONFIG) 
-
-
 
     def linear_model(self):
         clf = linear_model.LinearRegression()
