@@ -9,32 +9,41 @@ class Backtest(object):
         self.startdate   = pstartdate
         self.enddate     = penddate
         self.account     = Account(pwhichAccount = pwhichAccount)
-        
+        self.manager     = Manager()
+        self.analyst     = Analyst()
+        self.trader      = Trader()
+
     def run(self):
         msql = md.datamodule()
         days = msql.gettradedays(start_date1=self.startdate, end_date1=self.enddate)
         for date in days:
-           self.onbar(date)
+           self._onbar(date)
 
-    def onbar(self,pdate):
-        fcff = fc.FCFF()
-        dffc = fcff.monitor(pdate=pdate)
+    def _onbar(self,pdate):
+        fcff = self.analyst.work(pdate = pdate)
         if dffc.empty:
           return
-        dfbuysell = self.logic(dffc)
-        self.doit(pdf=dfbuysell,pdate=pdate)
+        dfbuysell = self.manager.work(dffc)
+        self.trader.work(pdf=dfbuysell,pdate=pdate)
 
-    def logic(self,pdf):
+class Analyst(object):
+    def __init__(self):
+        pass
+    def work(self,pdate):
+        fcff = fc.FCFF()
+        dffc = fcff.monitor(pdate=pdate)
+        return dffc
+
+class Manager(object):
+    def __init__(self):
+        pass
+    def work(self,pdf):
         df =pdf.copy(deep=True)
         dfbs = pd.DataFrame()
         #dfbs = self._assetalloc(df)
         #self._stocktiming(df)
         dfbs = self._stockselection(df)
         return dfbs
-
-    def doit(self,pdf,pdate):
-        for i,row in pdf.iterrows():
-            self.account.buysell(row,pdate)
 
     def _stockselection(self,df):
         jn = pd.DataFrame(journalaccount)
@@ -45,13 +54,19 @@ class Backtest(object):
         jn['price'] = df['close']
         jn['Shares'] = 100
         jn['buysell'] = 1
-
         return jn
+
     def _assetalloc(self,df):
         pass
     def _stocktiming(self,df):
         return df
-    
+
+class Trader(object):
+    def __init__(self):
+        pass
+    def work(self,pdf,pdate):
+        for i,row in pdf.iterrows():
+            self.account.buysell(row,pdate)
 
 class Account(object):
     def __init__(self,pwhichAccount):
@@ -70,26 +85,29 @@ class Account(object):
 
     def holding(self):
         df = self.journalaccount
-        df['sh'] = df['Shares'] * df['buysell']
-        grouped = df['sh'].groupby(df['ts_code'])
+        df['hold'] = df['Shares'] * df['buysell']
+        grouped = df['hold'].groupby(df['ts_code'])
         grouped = grouped.sum()
         print(grouped)
 
-        return grouped.sum()
+        return grouped
 
     def netvalue(self,pdate):
+        if pdate < self.journalaccount.iloc[-1]['date']
+            print('错误日期')
+            return None
         msql = md.datamodule()
         df_now = msql.pull_mysql(db = 'daily_basic',date = pdate)
         if df_now.empty:
             print('df empty!')
-            return
+            return None
         df_now.set_index(["ts_code"], inplace=True,drop = True) 
-        jn = self.journalaccount.set_index(["ts_code"], inplace=False,drop = True)
+        jn = self.holding()
+        jn.set_index(["ts_code"], inplace=True,drop = True)
 
         jn['close'] = df_now['close']
-        return jn['close'] * jn['Shares'] * jn['buysell']
-
-
+        jn['netvalue'] = jn['close'] * jn['hold'] 
+        return jn['netvalue'].sum() + self.account.iloc[-1]['buypower']
 
 if __name__ == '__main__':
     backtest = Backtest(pstartdate='20190409',penddate='20190412')
