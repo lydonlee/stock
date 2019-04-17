@@ -137,9 +137,11 @@ class FCFF(object):
         df_now.set_index(["ts_code"], inplace=True,drop = True) 
 
         df_basic = pd.read_csv(self.FCFF_csv,index_col = 0)
-        #df_basic.set_index(["ts_code"], inplace=True,drop = True)
+        df_basic.set_index(["ts_code"], inplace=True,drop = True)
         df_basic['lastupdate'] = latestday
         df_basic['total_mv'] = df_now['total_mv']*10000
+        df_basic['close'] = df_now['close']
+  
         df_basic['市场低估比率'] = (df_basic['evaluation'] - df_now['total_mv']*10000)/(df_now['total_mv']*10000)
         
         df_basic = msql.joinnames(df_basic)
@@ -150,6 +152,7 @@ class FCFF(object):
 
         df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',index = True)
         if pdate !=None:
+            df_basic = df_basic.reset_index()
             return df_basic
         if pcode != None:
             return df_basic.loc[pcode]
