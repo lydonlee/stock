@@ -11,7 +11,7 @@ class Backtest(object):
         self.account     = Account(pwhichAccount = pwhichAccount)
         self.manager     = Manager()
         self.analyst     = Analyst()
-        self.trader      = Trader()
+        self.trader      = Trader(account)
 
     def run(self):
         msql = md.datamodule()
@@ -25,6 +25,8 @@ class Backtest(object):
           return
         dfbuysell = self.manager.work(dffc)
         self.trader.work(pdf=dfbuysell,pdate=pdate)
+        netvalue = self.account.netvalue(pdate = pdate)
+        print(netvalue)
 
 class Analyst(object):
     def __init__(self):
@@ -49,7 +51,7 @@ class Manager(object):
         jn = pd.DataFrame(journalaccount)
         df = df[df['grade'] > 0]
         df = df[df['grade'] < 3]
-     
+        df = df[:10]
         jn['ts_code'] = df['ts_code']
         jn['price'] = df['close']
         jn['Shares'] = 100
@@ -62,11 +64,12 @@ class Manager(object):
         return df
 
 class Trader(object):
-    def __init__(self):
-        pass
+    def __init__(self,paccount):
+        self.account = paccount
     def work(self,pdf,pdate):
         for i,row in pdf.iterrows():
-            self.account.buysell(row,pdate)
+            if self.account.journalaccount.loc['ts_code']['Shares'] < row['Shares']
+                self.account.buysell(row,pdate)
 
 class Account(object):
     def __init__(self,pwhichAccount):
