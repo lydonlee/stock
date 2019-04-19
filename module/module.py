@@ -107,7 +107,7 @@ class datamodule(object):
 
     #为df增加股票名字，行业等基本信息    
     def joinnames(self,df):
-        df1 = self._getstock_basic()
+        df1 = self.gettable(pdb='stock_basic',ptable = 'stock_basic')
         df1.set_index(["ts_code"], inplace=True,drop = True)
         if df.index.name != 'ts_code':
             df.set_index(["ts_code"], inplace=True,drop = True)
@@ -119,15 +119,18 @@ class datamodule(object):
         yconnect = create_engine(sqlcmd) 
         if db == 'stock_basic' or db =='trade_cal':
             df = self.pro.query(db)
-            pd.io.sql.to_sql(df,db,con=yconnect, schema=db,if_exists='replace') 
+        elif db == 'index_daily':
+            df = self.pro.query(db,ts_code = '000001.SH')
+        
+        pd.io.sql.to_sql(df,db,con=yconnect, schema=db,if_exists='replace') 
         yconnect.dispose()
 
-    def _getstock_basic(self):
-        concmd = self.mysqlcmd.format('stock_basic')
+    def gettable(self,pdb = 'stock_basic',ptable = 'stock_basic'):
+        concmd = self.mysqlcmd.format(pdb)
         yconnect = create_engine(concmd) 
         df = pd.DataFrame()
        
-        sql_cmd = 'select * from stock_basic'
+        sql_cmd = 'select * from '+ ptable
        
         try:
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
@@ -229,7 +232,7 @@ class datamodule(object):
             self._push_daily_basic(start=s,end=now,firsttime=firsttime)
         elif db1 == 'dividend' or db1 == 'income' or db1 == 'cashflow' or db1 == 'balancesheet' or db1 =='fina_indicator':
             self._push_by_code(db1)
-        elif db1 == 'stock_basic' or db1 == 'trade_cal' :
+        elif db1 == 'stock_basic' or db1 == 'trade_cal' or db1=='index_daily' :
             self._push_db(db1)
         elif db1 == 'future_income':
             self._pushfutureincome()
@@ -255,7 +258,7 @@ class datamodule(object):
         self._init_tushare()
         if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet' or db == 'fina_indicator'):
             self._fix_by_ts_code(sqldb=db) 
-        elif db == 'stock_basic' or db == 'trade_cal' or db =='future_income' :
+        elif db == 'stock_basic' or db == 'trade_cal' or db =='future_income' or db=='index_daily' :
             return
         else:
             self._fix_by_time(db)

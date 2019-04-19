@@ -20,7 +20,7 @@ for path in MODULE_PATH.values():
         sys.path.append(path)
 
 if 'Windows' in platform.uname() :
-    db_update_day = ['daily_basic','daily_basic_ts_code','margin_detail']
+    db_update_day = ['index_daily','daily_basic','daily_basic_ts_code','margin_detail']
     db_update_quter = ['fina_indicator','balancesheet','cashflow','dividend','trade_cal','stock_basic','income','future_income']
     #db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic','income','future_income']
 else:

@@ -32,7 +32,7 @@ class FCFF(object):
     def __init__(self):
         cfg = config.configs.FCFF
         self.template = cfg.FCFF_template
-        self.FCFF_csv = cfg.FCFF_csv
+        #self.FCFF_csv = cfg.FCFF_csv
         self.monitor_csv = cfg.monitor_FCFF_csv
         self.thisyear = int(datetime.datetime.now().strftime('%Y'))
         logging.basicConfig(level=logging.DEBUG,
@@ -105,7 +105,7 @@ class FCFF(object):
 
             dfm.loc[s:e,'PEG'] = df['pe_ttm'] / (row['y0_grow_rate']*100)
         dfm['市场低估比率'] = (dfm['evaluation'] - dfm['total_mv']*10000)/(dfm['total_mv']*10000)
-
+        dfm['grade'] = dfm['市场低估比率'].apply(lambda x: _fun(x))
         #dfm = msql.joinnames(df_basic)
         #dfm = dfm.sort_values('市场低估比率',ascending = False) 
         dfm[X_col] = dfm['市场低估比率'].apply(lambda x: _fun(x))
@@ -113,7 +113,7 @@ class FCFF(object):
         dfm.to_csv(monitor_path,encoding='utf_8_sig',index = True)
 
 
-    #用每天的数据和季度估值做比较，每天调用    
+    #用每天的数据和季度估值做比较，每天调用,    
     def monitor(self,pcode = None,pdate = None):
         msql = md.datamodule()
         if pdate != None:
@@ -121,23 +121,24 @@ class FCFF(object):
         else:
             latestday = msql.getlatestday('daily_basic')
         dfm = pd.DataFrame()
+        FCFF_csv = self._get_path_build_for_monitor(pdate=pdate)
         if pcode != None :
             try:
-                dfm = pd.read_csv(self.monitor_csv,index_col = 0)
+                dfm = pd.read_csv(FCFF_csv,index_col = 0)
                 if not dfm.empty:
                     #已经是最新的数据了，直接返回需要的值
                     if dfm.iloc[0]['lastupdate'] == int(latestday):
                         return dfm.loc[pcode]
             except:
-                print('没找到:'+self.monitor_csv,'重新建立')
+                print('没找到:'+FCFF_csv,'重新建立')
 
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
         if df_now.empty:
             return df_now
         df_now.set_index(["ts_code"], inplace=True,drop = True) 
 
-        df_basic = pd.read_csv(self.FCFF_csv,index_col = 0)
-        df_basic.set_index(["ts_code"], inplace=True,drop = True)
+        df_basic = pd.read_csv(FCFF_csv,index_col = False )
+        df_basic.set_index(["ts_code"], inplace=True,drop = False)
         df_basic['lastupdate'] = latestday
         df_basic['total_mv'] = df_now['total_mv']*10000
         df_basic['close'] = df_now['close']
@@ -150,31 +151,62 @@ class FCFF(object):
  
         df_basic['grade'] = df_basic['市场低估比率'].apply(lambda x: _fun(x))
 
-        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',index = True)
+        
         if pdate !=None:
-            df_basic = df_basic.reset_index()
+            #df_basic = df_basic.reset_index()
             return df_basic
         if pcode != None:
             return df_basic.loc[pcode]
-    
-    #根据季度报估值，每季度调用一次  
-    def build_for_monitor(self):
+
+        df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',index = True)
+
+    def all_build_for_monitor(self):
+        for day in range(1995,self.thisyear,1):
+            day1 = str(day)+'0630'
+            print(day1)
+            self._build_for_monitor(pdate = day1)
+
+            day2 = str(day)+'1231'
+            self._build_for_monitor(pdate = day2)
+
+    def _get_path_build_for_monitor(self,pdate=None):
+        if pdate == None:
+            msql = md.datamodule()
+            end_date = msql.getlatestday()
+        else:#20190418，为了backtest，生成所有日期的信息
+            end_date = pdate
+
+        if end_date[4:] <='0630':
+            end_date = end_date[:4]+'0630'
+        else:
+            end_date = end_date[:4]+'1231'
+
+        return self._trainpath(end_date)
+
+    #根据季度报估值，每季度调用一次，如果pdate为空，则默认生成最新的数据  
+    def _build_for_monitor(self,pdate = None):
         df_rslt = pd.DataFrame()
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         msql = md.datamodule()
 
         ts_code_df = msql.getts_code()
-        end_date = msql.getlatestday()
+        if pdate == None:
+            end_date = msql.getlatestday()
+        else:#20190418，为了backtest，生成所有日期的信息
+            end_date = pdate
+
         if end_date[4:] <='0630':
             end_date = end_date[:4]+'0630'
         else:
             end_date = end_date[:4]+'1231' 
         for i,code in ts_code_df.iterrows():
+            print(code['ts_code'])
             df_income = msql.pull_mysql(db = 'income',ts_code = code['ts_code'])
             df_cash = msql.pull_mysql(db = 'cashflow',ts_code = code['ts_code'])
             df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = code['ts_code'])
             df_future = msql.pull_mysql(db = 'future_income',ts_code = code['ts_code'])
             df1 = self._buildtemplate(df = df_template,code = code['ts_code'],pdate = end_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
+            
             if df1.empty:
                 continue
             dic = {}
@@ -195,7 +227,8 @@ class FCFF(object):
             df1 = pd.DataFrame.from_dict(dic)
             df_rslt = pd.concat([df_rslt,df1.loc[0:0,]],ignore_index = True)
 
-        df_rslt.to_csv(self.FCFF_csv,encoding='utf_8_sig',index = False) 
+        filepath=self._get_path_build_for_monitor(pdate=pdate)
+        df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False) 
 
     #pcode必须，储存一个code的evaluation数据到 /data/train_FCFF/002008.sz
     def detail_template(self,pcode = None,ptrade_date = None):
@@ -549,14 +582,14 @@ class FCFF(object):
         df_template.to_csv(file,encoding='utf_8_sig',index = True)
 
 if __name__ == '__main__':
-    f = FCFF()
-    #f.build_for_monitor()
+    #f = FCFF()
+    #f.all_build_for_monitor()
     #f.monitor()
-    f.detail_template(pcode = '002672.SZ',ptrade_date = '20181231')
+    #f.detail_template(pcode = '002672.SZ',ptrade_date = '20181231')
     #f.train_FCFF()
     #f.monitor_train()
-    #msql = md.datamodule()
-    #msql._init_tushare()
+    msql = md.datamodule()
+    msql.updatedbone(db1 = 'index_daily',firsttime=1)
     #msql._push_daily_basic(start='19940101',end='20011118',firsttime = 0)
     #msql.updatedball(daily = False,quter=True)
     #print(msql.gettradedays())
