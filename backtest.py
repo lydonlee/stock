@@ -99,15 +99,17 @@ class Backtest(object):
 
 class Analyst(object):
     def __init__(self):
-        pass
         self.count = 0
     def work(self,pdate):
+        return self.buyandhold(pdate=pdate)
+    def buyandhold(self,pdate):
         if self.count == 0:
             fcff = fc.FCFF()
             dffc = fcff.monitor(pdate=pdate)
             self.count = 1
             return dffc
         return pd.DataFrame()
+
 #1,买入了错误的股票，买入后股价一直下跌
 #2，买入后持有时间不够长，错误时间卖出了
 #3，频繁买卖，佣金损失大

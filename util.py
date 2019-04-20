@@ -81,6 +81,19 @@ def _thread_by_code(pfunc=None,df=None,p1=None,p2=None,p3=None,p4=None,p5=None):
         elif p5 != None:
             pfunc(code['ts_code'],p1,p2,p3,p4,p5)
 
+def grade(x):
+    if x >= 5:
+        return 5
+    elif x<=-5:
+        return -5
+    return x
+
+def toquter(date='20190401'):
+    if date[4:] <='0630':
+        end_date = date[:4]+'0630'
+    else:
+        end_date = date[:4]+'1231'
+    return end_date
 if __name__ == '__main__':
     #geturl()
     urllib()

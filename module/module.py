@@ -240,7 +240,7 @@ class datamodule(object):
             self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
 
     def updatedball(self,firsttime = 0,daily = True,quter=False):
-        
+        print(daily,quter,firsttime)
         cfg = config.configs.module
         if daily and quter:
             db_list = cfg.db_update_day + cfg.db_update_quter

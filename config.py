@@ -24,7 +24,9 @@ if 'Windows' in platform.uname() :
     db_update_quter = ['fina_indicator','balancesheet','cashflow','dividend','trade_cal','stock_basic','income','future_income']
     #db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic','income','future_income']
 else:
-    db_func_list = ['daily_basic_ts_code','dividend']
+    db_update_day = ['daily_basic_ts_code','dividend']
+    db_update_quter =[]
+
     
 configs = {
     'module': {

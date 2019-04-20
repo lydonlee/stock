@@ -11,13 +11,7 @@ import config
 # 归一化
 def normalization(series):
     return (series - min(series))/(max(series) - min(series)) 
-CONFIG = {
-    'trainStart' :   0,
-    'trainEnd'   :  200,
-    'testStart'  :  201,
-    'testEnd'    :  300,
-    'features'   :  ["X1", "X2"],
-}
+
 class Regression(object):
     def __init__(self):
         cfg = config.configs.Regression
@@ -48,7 +42,7 @@ class Regression(object):
         self.CONFIG['DATA_FILENAME'] = self.r_csv
         self.CONFIG['weights'] = self.weights_lasso
         self.CONFIG['weights_OLS'] = self.weights_OLS
-        self.CONFIG['weights_weights_lasso'] = self.weights_lasso
+        self.CONFIG['weights_lasso'] = self.weights_lasso
         np.save(self.regconfig_cfg, self.CONFIG) 
 
 
@@ -180,6 +174,41 @@ class Regression(object):
         reg.saveconfig()
         reg.plot()
 
+    def monitor(self,pdate='20190401'):
+        df = pd.DataFrame()
+ 
+        df['X1'] = self.predict()
+        df['close'] = self.testY
+        df['grade'] = (df['close']-df['X1'])/df['close']
+        df['grade'] = df['grade'].apply(lambda x: ut.grade(x))
+        return df
+    def _buildone_for_monitor(self,pcode = None):
+        if pcode == None:
+            return
+        msql = md.datamodule()
+        df_fina = msql.pull_mysql(db = 'fina_indicator',ts_code = pcode).dropna()
+        df_basic = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode).dropna()
+        df_fina['Y_price'] = 0
+        df_fina['Y_date'] = '19950101'
+
+        df = pd.DataFrame()
+        #df_fina_null = pd.isnull(df_fina)
+        for i,row in df_fina.iterrows():
+            ann_date = row['ann_date']
+            ann_date = self._findtradeday(df_basic,ann_date)
+            df = df_basic[df_basic['trade_date'] == ann_date] 
+
+            df_fina.loc[i,'Y_price'] = df.iloc[0]['close']
+            df_fina.loc[i,'Y_date'] =  ann_date
+            #转变为每股
+            total_share = df.iloc[0]['total_share']*1e4
+            for col in self.col_list:
+                #if not df_fina_null.loc[i,col]:
+                df_fina.loc[i,col] = df_fina.loc[i,col]/total_share
+        self.sem.acquire()
+        self.df_rslt = pd.concat([self.df_rslt,df_fina],ignore_index = True)
+        self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
+        self.sem.release()
 if __name__ == '__main__':
     #msql = md.datamodule()
     #msql.updatedbone(db1 = 'fina_indicator',firsttime=1)
