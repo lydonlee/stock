@@ -1,15 +1,17 @@
+from multiprocessing import Pool
 import pandas as pd
-from module import module as md
-import config
 import datetime
-import tushare as ts
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import math
 import logging
-import util as ut
 from scipy import stats
+import tushare as ts
+import config
+import module  as md
+import util as ut
+
 # monitor ：用每天的数据和季度估值做比较，输出所有股票的当前估值 
 #train_FCFF_monitor：输出某只股票的所有历史估值
 #detail_template
@@ -28,6 +30,28 @@ def func1(x):
     except:
         return None
 
+def _build_for_monitor_woker(day):
+    fcff = FCFF()
+    day1 = str(day)+'0630'
+    print(day1)
+    fcff._build_for_monitor(pdate = day1)
+
+    day2 = str(day)+'1231'
+    fcff._build_for_monitor(pdate = day2)
+
+def all_build_for_monitor():
+    pool = Pool(processes=5) 
+    pool.map(_build_for_monitor_woker, range(1995,2019,1))
+
+#新建训练数据，X,Y，X为截止当前某股票的grade,Y为股价相对最近一次财报日的涨幅
+#后续要考虑财报公布日期的因素
+def train_FCFF_monitor():
+    fcff = FCFF()
+    ut.process_loop(by = 'ts_code',pFunc = fcff._monitor_one_train)
+def train_FCFF():
+    fcff = FCFF()
+    ut.process_loop(by = 'ts_code',pFunc = fcff._build_one_train)
+
 class FCFF(object):
     def __init__(self):
         cfg = config.configs.FCFF
@@ -43,7 +67,7 @@ class FCFF(object):
 
     def get_grade(self,pcode = None,pdate = None):
         try:
-            dfm = pd.read_csv(self.monitor_csv,index_col = 0)
+            dfm = ut.read_csv(self.monitor_csv,index_col = 0)
             if not dfm.empty:
                 if pcode ==None:
                     return dfm
@@ -52,13 +76,7 @@ class FCFF(object):
         except:
             print('没找到:'+self.monitor_csv,'请重新调用monitor')
             return pd.DataFrame()
-    #新建训练数据，X,Y，X为截止当前某股票的grade,Y为股价相对最近一次财报日的涨幅
-    #后续要考虑财报公布日期的因素
 
-    def train_FCFF_monitor(self):
-        ut.thread_loop(by = 'ts_code',pFunc = self._monitor_one_train)
-    def train_FCFF(self):
-        ut.thread_loop(by = 'ts_code',pFunc = self._build_one_train)
     #新建训练数据，X,Y，X为截止当前某股票的grade,Y为未来几天Y_day的股价相对上一次财报日的涨幅
     #后续要考虑财报公布日期的因素
     def _monitor_one_train(self,pcode = None):
@@ -70,7 +88,7 @@ class FCFF(object):
         Y_col = 'Y'
         #dfm = pd.DataFrame()
         try:
-            df_evl = pd.read_csv(evl_path)
+            df_evl = ut.read_csv(evl_path)
         except:
             print('没有build该文件:'+pcode)
             return
@@ -124,7 +142,7 @@ class FCFF(object):
         FCFF_csv = self._get_path_build_for_monitor(pdate=pdate)
         if pcode != None :
             try:
-                dfm = pd.read_csv(FCFF_csv,index_col = 0)
+                dfm = ut.read_csv(FCFF_csv,index_col = 0)
                 if not dfm.empty:
                     #已经是最新的数据了，直接返回需要的值
                     if dfm.iloc[0]['lastupdate'] == int(latestday):
@@ -137,7 +155,7 @@ class FCFF(object):
             return df_now
         df_now.set_index(["ts_code"], inplace=True,drop = True) 
 
-        df_basic = pd.read_csv(FCFF_csv,index_col = False )
+        df_basic = ut.read_csv(FCFF_csv,index_col = False )
         df_basic.set_index(["ts_code"], inplace=True,drop = False)
         df_basic['lastupdate'] = latestday
         df_basic['total_mv'] = df_now['total_mv']*10000
@@ -543,7 +561,7 @@ class FCFF(object):
 
     def plot(self,ts_code):
         filepath = self._trainpath('monitor_'+ts_code)
-        dfm = pd.read_csv(filepath,index_col = None)
+        dfm = ut.read_csv(filepath,index_col = None)
         dfm['X'] = (dfm['evaluation']/10000)/dfm['total_share']/2
         dfm['Y'] = dfm['total_mv']/dfm['total_share']
         dfm['trade_date'] = dfm['trade_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
@@ -582,14 +600,15 @@ class FCFF(object):
         df_template.to_csv(file,encoding='utf_8_sig',index = True)
 
 if __name__ == '__main__':
+    all_build_for_monitor()
     #f = FCFF()
     #f.all_build_for_monitor()
     #f.monitor()
     #f.detail_template(pcode = '002672.SZ',ptrade_date = '20181231')
     #f.train_FCFF()
     #f.monitor_train()
-    msql = md.datamodule()
-    msql.updatedbone(db1 = 'index_daily',firsttime=1)
+    #msql = md.datamodule()
+    #msql.updatedbone(db1 = 'index_daily',firsttime=1)
     #msql._push_daily_basic(start='19940101',end='20011118',firsttime = 0)
     #msql.updatedball(daily = False,quter=True)
     #print(msql.gettradedays())

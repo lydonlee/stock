@@ -3,9 +3,28 @@ import pandas as pd
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 import datetime
+from selenium import webdriver
 import csv
 import config
 import time
+import redis
+import pickle
+
+redisConn = redis.Redis(host='localhost', port=6379, db=0)
+class redis_df_decorator(object):
+    def __init__(self):
+        pass
+    def __call__(self, func): # 接受函数
+        def wrapper(*args, **kwargs):
+            reids_key = str(func.__module__)+func.__name__+str(kwargs)
+            if redisConn.exists(reids_key):
+                return pd.read_msgpack(redisConn.get(reids_key))
+                
+            else:
+                df = func(*args, **kwargs)
+                redisConn.set(reids_key, df.to_msgpack(compress='zlib'))
+                return df
+        return wrapper  #返回函数
 
 def _lower(x):
     return x.lower()
@@ -24,7 +43,8 @@ class datamodule(object):
         df = self.pro.query(db,ts_code = ts_code)
         return df
 
-    def pull_mysql(self,db = 'daily_basic',date = None,limit = None,ts_code = '300552.SZ'):
+    @redis_df_decorator()
+    def pull_mysql(self,db = 'daily_basic_ts_code',date = None,limit = None,ts_code = '300552.SZ'):
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd) 
         df = pd.DataFrame()
@@ -125,6 +145,7 @@ class datamodule(object):
         pd.io.sql.to_sql(df,db,con=yconnect, schema=db,if_exists='replace') 
         yconnect.dispose()
 
+    @redis_df_decorator()
     def gettable(self,pdb = 'stock_basic',ptable = 'stock_basic'):
         concmd = self.mysqlcmd.format(pdb)
         yconnect = create_engine(concmd) 
@@ -146,6 +167,11 @@ class datamodule(object):
         return df
 
     def gettradedays(self,start_date1=None, end_date1=None,firsttime = 0):
+        reids_key = 'gettradedays'+str(start_date1)+str(end_date1)+str(firsttime)
+        if redisConn.exists(reids_key):
+            print('redis:'+reids_key)
+            return pickle.loads(redisConn.get(reids_key))
+
         concmd = self.mysqlcmd.format('trade_cal')
         yconnect = create_engine(concmd) 
         df = pd.DataFrame()
@@ -159,11 +185,15 @@ class datamodule(object):
             sql_cmd = "select  cal_date from trade_cal where is_open = 1 and cal_date <= '"+ end_date1+"'"
         try:
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
+            
         except:
             print("err：pull_mysql:"+sql_cmd)
         yconnect.dispose()
 
-        return df['cal_date'].tolist()
+        lidata = df['cal_date'].tolist()
+        redisConn.set(reids_key, pickle.dumps(lidata))
+
+        return lidata
 
     def gettradedays_net(self,start_date1='', end_date1='',firsttime = 0):
         self._init_tushare()
@@ -178,6 +208,10 @@ class datamodule(object):
         return tradedays_list
 
     def getlatestday(self,db = 'margin_detail'):
+        reids_key = 'getlatestday'+str(db)
+        if redisConn.exists(reids_key):
+            print('redis:'+reids_key)
+            return redisConn.get(reids_key)
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd)
         if db == 'daily_basic_ts_code':
@@ -190,7 +224,11 @@ class datamodule(object):
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
             ttable = df.iloc[0][0]
             lastday = ttable[1:]
-        return lastday           
+
+        redisConn.set(reids_key, lastday)    
+        return lastday         
+
+    @redis_df_decorator()  
     def getts_code(self):
         concmd = self.mysqlcmd.format('stock_basic')
         yconnect = create_engine(concmd) 
@@ -202,7 +240,6 @@ class datamodule(object):
         except:
             print("err：pull_mysql:"+sql_cmd)
         yconnect.dispose()
-        #df['ts_code'] = df['ts_code'].apply(lambda x: _lower(x))
         return df
 
     def getts_code_net(self):
@@ -240,20 +277,26 @@ class datamodule(object):
             self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
 
     def updatedball(self,firsttime = 0,daily = True,quter=False):
-        print(daily,quter,firsttime)
         cfg = config.configs.module
         if daily and quter:
-            db_list = cfg.db_update_day + cfg.db_update_quter
+            db_list = cfg.db_update_quter + cfg.db_update_day 
         elif daily:
             db_list = cfg.db_update_day
         elif quter:
             db_list = cfg.db_update_quter
                       
         for db1 in db_list:
+            print('updating:',db1)
             self.updatedbone(db1 = db1,firsttime=firsttime)
             self.fix_db(db = db1)
     
     #查看没有下载的数据库，重新下载,判断依据是没有创建表，不判断表里的内容是否为最新  
+    def fix_db_all(self):
+        cfg = config.configs.module
+        db_list = cfg.db_update_quter + cfg.db_update_day
+        for db1 in db_list:
+            self.fix_db(db = db1)
+
     def fix_db(self,db = 'daily_basic_ts_code'):
         self._init_tushare()
         if (db == 'daily_basic_ts_code' or db == 'dividend' or db == 'income' or db == 'cashflow' or db == 'balancesheet' or db == 'fina_indicator'):

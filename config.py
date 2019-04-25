@@ -21,8 +21,9 @@ for path in MODULE_PATH.values():
 
 if 'Windows' in platform.uname() :
     db_update_day = ['index_daily','daily_basic','daily_basic_ts_code','margin_detail']
-    db_update_quter = ['fina_indicator','balancesheet','cashflow','dividend','trade_cal','stock_basic','income','future_income']
-    #db_func_list = ['balancesheet','daily_basic','daily_basic_ts_code','cashflow','margin_detail','dividend','trade_cal','stock_basic','income','future_income']
+    #'trade_cal','stock_basic'要在最前面，因为里面包含了其他数据库更新需要的信息
+    db_update_quter = ['trade_cal','stock_basic','fina_indicator','balancesheet','cashflow','dividend','income','future_income']
+    #db_update_quter = ['income','future_income']
 else:
     db_update_day = ['daily_basic_ts_code','dividend']
     db_update_quter =[]

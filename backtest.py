@@ -1,5 +1,6 @@
 import pandas as pd
-from module import module as md
+from multiprocessing import Pool
+import module as md
 import config
 import FCFF as fc
 import datetime
@@ -20,54 +21,59 @@ class runtimes(object):
             else:
                 return pd.DataFrame()
         return wrapper  #返回函数
-def finddbest():
+def findbest():
+     pool = Pool(processes=5) 
+     pool.map(_findbest_worker, range(1,10))
+def _findbest_worker(j = 1):
     df = pd.DataFrame()
-        
     maxn = 0
     maxi = 0
     i   = 0
     startdate = '20170{}01'
     enddate = '20181205'
-    for j in range(1,10,1):
-        s = startdate.format(j)
-        while( i<= 3):
-            i = i + 0.01
-            backtest = Backtest(pstartdate=startdate,penddate=enddate,pmanager = i)
-            backtest.run()
-            t = pd.DataFrame()
-            t['netvalue'] = backtest.hisnetvalue['netvalue']
-            mid = t.apply('sum',axis=0)
-            dic = {'i':i,'sum':mid}
-            df = df.append(dic,ignore_index=True)
-            if maxn < mid['netvalue']:
-                maxn = mid['netvalue']
-                maxi = i
-            print(i,mid['netvalue'])
+    
+    s = startdate.format(j)
+    while( i<= 3):
+        i = i + 0.01
+        backtest = Backtest(pmanager = i)
+        backtest.run(pstartdate=startdate,penddate=enddate,pstep=300)
+        t = pd.DataFrame()
+        t['netvalue'] = backtest.hisnetvalue['netvalue']
+        mid = t.apply('sum',axis=0)
+        dic = {'i':i,'sum':mid}
+        df = df.append(dic,ignore_index=True)
+        if maxn < mid['netvalue']:
+            maxn = mid['netvalue']
+            maxi = i
+        print(i,mid['netvalue'])
 
-        filepath = config.detaildir('FCFF_PNG',j+str(maxi)+'.png')
-        
-        plt.plot(df['i'],df['sum'],'r')
-        plt.savefig(filepath)
-        #plt.show()
+    filepath = config.detaildir('FCFF_PNG',j+str(maxi)+'.png')
+    
+    plt.plot(df['i'],df['sum'],'r')
+    plt.savefig(filepath)
+    #plt.show()
 
 class Backtest(object):
-    def __init__(self,pstartdate = None,penddate = None,pwhichAccount = 0,pmanager = 0):
-        self.startdate   = pstartdate
-        self.enddate     = penddate
+    def __init__(self,pwhichAccount = 0,pmanager = 0):
         self.account     = Account(pwhichAccount = pwhichAccount)
         self.manager     = Manager(par = pmanager)
         self.analyst     = Analyst()
         self.trader      = Trader(self.account)
         self.hisnetvalue = pd.DataFrame()
 
-    def run(self):
+    def run(self,pstartdate,penddate,pstep = 1):
         msql = md.datamodule()
-        days = msql.gettradedays(start_date1=self.startdate, end_date1=self.enddate)
-        for date in days:
-           self._onbar(date)
+        days = msql.gettradedays(start_date1=pstartdate, end_date1=penddate)
+        lenth = len(days)
+     
+        for i in range(0,lenth,pstep):
+            self._onbar(days[i])
+            if i+ pstep >= lenth:
+                self._onbar(days[lenth-1])#确保最后一天能执行
+                
         #print(self.account.journalaccount)
         #self.plot()
-
+  
     def _onbar(self,pdate):
         fcff = self.analyst.work(pdate = pdate)
         dfbuysell = self.manager.work(fcff)
@@ -77,7 +83,6 @@ class Backtest(object):
         dic = {'netvalue':net,'date':pdate}
         self.hisnetvalue = self.hisnetvalue.append(dic,ignore_index=True)
         
-
     def plot(self):
         msql = md.datamodule()
         sh = msql.gettable(pdb = 'index_daily',ptable = 'index_daily')
@@ -175,7 +180,7 @@ class Account(object):
         cfg = config.configs.Backtest
         self.account_csv = cfg.account_csv
         if pwhichAccount == 1:#如果是账户1，从csv读取
-            self.journalaccount  = pd.read_csv(self.account_csv,index_col = 0)
+            self.journalaccount  = ut.read_csv(self.account_csv,index_col = 0)
             self.buypower = self.account.iloc[-1]['buypower']
         else:
             self.journalaccount = pd.DataFrame(journalaccount)
@@ -234,4 +239,4 @@ class Account(object):
 if __name__ == '__main__':
     #backtest = Backtest(pstartdate='20170109',penddate='20181201')
     #backtest.run()
-    finddbest()
+    findbest()

@@ -1,20 +1,34 @@
+#!D:\ProgramData\Anaconda3\python
 from operator import methodcaller
-from module import module as md
+import module 
+import regression 
+import backtest 
+import FCFF 
+helpinfor = '''
+md =module.datamodule()
+    md.updatedball(firsttime = 0,daily = True,quter=False)
+    md.updatedbone(db1 = 'future_income',firsttime=1)
+    md.fix_db(db = 'fina_indicator')
+    md.fix_db_all()
+reg=regression.Regression()
+bt =backtest.Backtest()
+fcff=FCFF.FCFF()
+    FCFF.all_build_for_monitor()
+    FCFF.train_FCFF()
+    FCFF.train_FCFF_monitor()
+'''
 if __name__ == '__main__':
     run = True
-    msql = md.datamodule()
-    reg = Regression()
+    print(helpinfor)
+
+    md   = module.datamodule()
+    reg  = regression.Regression()
+    bt   = backtest.Backtest()
+    fcff  =  FCFF.FCFF()
+
     while(run):
-        cmd = input('''supported command: 
-1 updatedball
-2 exit
+        cmd = input('''输入函数名及参数：
 ''')
-        if   cmd == '2' or cmd == 'updatedball':
-            msql.updatedball(daily = True,quter=False) 
-        elif cmd == '1' or cmd == 'exit':
-            run = False
-        elif cmd == '3' or cmd == 'regression'
-            reg.train()
-        else:
-            methodcaller('updatedball',daily = True,quter=False)(msql)
+        eval(cmd)
+    
   

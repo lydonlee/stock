@@ -1,5 +1,5 @@
 import pandas as pd
-from module import module as md
+import module as md
 import csv
 import shutil
 import os

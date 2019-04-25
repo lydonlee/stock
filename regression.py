@@ -1,16 +1,39 @@
 import pandas as pd
 import numpy as np
+from multiprocessing import Lock
 import threading
 from sklearn import linear_model
 from scipy import stats
 import matplotlib.pyplot as plt
-from module import module as md
+import module as md
 import util as ut
 import config
 
-# 归一化
-def normalization(series):
-    return (series - min(series))/(max(series) - min(series)) 
+def build_Regression():
+    reids_key = 'Regression'+'_build_one_train'
+    if md.redisConn.exists(reids_key):
+         md.redisConn.delete(reids_key)
+
+    mutex=Lock()
+    ut.process_loop(by = 'ts_code',pFunc = _build_one_train,p1=mutex)
+    print('build_Regression finish!')
+    reg = Regression()
+    if md.redisConn.exists(reids_key):
+        df = pd.read_msgpack(md.redisConn.get(reids_key))
+        df.to_csv(reg.r_csv,encoding='utf_8_sig',index = False)
+
+def _build_one_train(pcode = None,mutex=None,reg):
+    reg= Regression()
+    reg._build_one_train(pcode = pcode)
+    reids_key = 'Regression'+'_build_one_train'
+
+    mutex.acquire()
+    if md.redisConn.exists(reids_key):
+        df = pd.read_msgpack(md.redisConn.get(reids_key))
+        reg.df_rslt = pd.concat([df,reg.df_rslt],ignore_index = True)
+    md.redisConn.set(reids_key, reg.df_rslt.to_msgpack(compress='zlib'))
+    mutex.release()
+        
 
 class Regression(object):
     def __init__(self):
@@ -45,8 +68,6 @@ class Regression(object):
         self.CONFIG['weights_lasso'] = self.weights_lasso
         np.save(self.regconfig_cfg, self.CONFIG) 
 
-
-
     def linear_model(self):
         clf = linear_model.LinearRegression()
         clf.fit(self.trainMat,self.trainY)
@@ -80,9 +101,6 @@ class Regression(object):
                 best_lam = lam
                 best_err = err
         return best_lam
-    def build_Regression(self):
-        ut.thread_loop(by = 'ts_code',pFunc = self._build_one_train)
-        #self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
 
     def _build_one_train(self,pcode = None):
         if pcode == None:
@@ -90,6 +108,8 @@ class Regression(object):
         msql = md.datamodule()
         df_fina = msql.pull_mysql(db = 'fina_indicator',ts_code = pcode).dropna()
         df_basic = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode).dropna()
+        if df_basic.empty or df_fina.empty:
+            return
         df_fina['Y_price'] = 0
         df_fina['Y_date'] = '19950101'
 
@@ -109,7 +129,7 @@ class Regression(object):
                 df_fina.loc[i,col] = df_fina.loc[i,col]/total_share
         self.sem.acquire()
         self.df_rslt = pd.concat([self.df_rslt,df_fina],ignore_index = True)
-        self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
+        #self.df_rslt.to_csv(self.r_csv,encoding='utf_8_sig',index = False)
         self.sem.release()
 
     def _findtradeday(self,pdf,pdate):
@@ -119,7 +139,7 @@ class Regression(object):
         return pdf.loc[i]['trade_date']
         
     def getdata(self):
-        df = pd.read_csv(self.r_csv,index_col = None)
+        df = ut.read_csv(self.r_csv,index_col = None)
         #del df['Unnamed: 0']
         df = df.dropna()
 
