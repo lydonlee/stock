@@ -1,4 +1,6 @@
 from multiprocessing import Pool
+from multiprocessing import Lock
+import threading
 import pandas as pd
 import datetime
 import matplotlib.pyplot as plt
@@ -6,11 +8,13 @@ import numpy as np
 import os
 import math
 import logging
+from sklearn import linear_model
 from scipy import stats
 import tushare as ts
 import config
 import module  as md
 import util as ut
+
 
 # monitor ：用每天的数据和季度估值做比较，输出所有股票的当前估值 
 #train_FCFF_monitor：输出某只股票的所有历史估值
@@ -29,28 +33,61 @@ def func1(x):
         return float(x)
     except:
         return None
-
-def _build_for_monitor_woker(day):
-    fcff = FCFF()
-    day1 = str(day)+'0630'
-    print(day1)
-    fcff._build_for_monitor(pdate = day1)
-
-    day2 = str(day)+'1231'
-    fcff._build_for_monitor(pdate = day2)
-
 def all_build_for_monitor():
     pool = Pool(processes=5) 
     pool.map(_build_for_monitor_woker, range(1995,2019,1))
 
+def _build_for_monitor_woker(day):
+    day1 = str(day)+'0630'
+    _build_for_monitor(pdate = day1)
+
+    day2 = str(day)+'1231'
+    _build_for_monitor(pdate = day2)
+
+def _build_for_monitor(pdate = None):
+    fcff = FCFF()
+    ut.thread_loop(by = 'ts_code',pFunc = fcff._build_for_monitor_one,p1=pdate)
+
+    filepath=fcff._get_path_build_for_monitor(pdate=pdate)
+    fcff.df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False) 
+def plotsave():
+    ut.process_loop(by ='ts_code',pclass=FCFF,pFunc = 'plotsave_one')
+
+
 #新建训练数据，X,Y，X为截止当前某股票的grade,Y为股价相对最近一次财报日的涨幅
 #后续要考虑财报公布日期的因素
+def monitor_xueqiu():
+    fcff = FCFF()
+    ut.thread_loop(by = 'ts_code',pFunc = fcff.monitor_one_xueqiu)
+    filepath = fcff._trainpath('xueqiu')
+    fcff.df_rslt.to_csv(filepath,encoding='utf_8_sig',index = True)
+def monitor_xueqiu1():
+    reids_key = 'FCFF'+'monitor_xueqiu1'
+    mutex=Lock()
+    if md.redisConn.exists(reids_key):
+         md.redisConn.delete(reids_key)
+    ut.process_loop(by = 'ts_code',pclass=FCFF,pFunc = 'monitor_one_xueqiu',p1=mutex,p2=reids_key,p3='20181231')
+    print('monitor_xueqiu1 finish!')
+    fcff = FCFF()
+    filepath = fcff._trainpath('xueqiu')
+    if md.redisConn.exists(reids_key):
+        df = pd.read_msgpack(md.redisConn.get(reids_key))
+        df.to_csv(filepath,encoding='utf_8_sig',index = False)
+
+def train_FCFF1():
+    reids_key = 'FCFF'+'train_FCFF1'
+    mutex=Lock()
+    if md.redisConn.exists(reids_key):
+         md.redisConn.delete(reids_key)
+    ut.process_loop(by = 'ts_code',pclass=FCFF,pFunc = '_build_one_train',p1=mutex,p2=reids_key)
+    print('train_FCFF1 finish!')
+
 def train_FCFF_monitor():
     fcff = FCFF()
-    ut.process_loop(by = 'ts_code',pFunc = fcff._monitor_one_train)
+    ut.thread_loop(by = 'ts_code',pFunc = fcff._monitor_one_train)
 def train_FCFF():
     fcff = FCFF()
-    ut.process_loop(by = 'ts_code',pFunc = fcff._build_one_train)
+    ut.thread_loop(by = 'ts_code',pFunc = fcff._build_one_train)
 
 class FCFF(object):
     def __init__(self):
@@ -59,6 +96,8 @@ class FCFF(object):
         #self.FCFF_csv = cfg.FCFF_csv
         self.monitor_csv = cfg.monitor_FCFF_csv
         self.thisyear = int(datetime.datetime.now().strftime('%Y'))
+        self.df_rslt  = pd.DataFrame()
+        self.sem = threading.Semaphore(1)
         logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s  %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
                     datefmt='%a, %d %b %Y %H:%M:%S',
@@ -67,7 +106,7 @@ class FCFF(object):
 
     def get_grade(self,pcode = None,pdate = None):
         try:
-            dfm = ut.read_csv(self.monitor_csv,index_col = 0)
+            dfm = pd.read_csv(self.monitor_csv,index_col = 0)
             if not dfm.empty:
                 if pcode ==None:
                     return dfm
@@ -88,7 +127,7 @@ class FCFF(object):
         Y_col = 'Y'
         #dfm = pd.DataFrame()
         try:
-            df_evl = ut.read_csv(evl_path)
+            df_evl = pd.read_csv(evl_path)
         except:
             print('没有build该文件:'+pcode)
             return
@@ -97,13 +136,13 @@ class FCFF(object):
         dfm[Y_col] = 0
         dfm['evaluation'] = 0
         dfm['PEG'] = 0
+        dfm['evaluation_grow_rate'] = 0
+        dfm['total_mv_grow_rate']=0
 
         dfm['trade_date'] = dfm['trade_date'].apply(lambda x:int(x))
         dfm = dfm.drop_duplicates('trade_date')
         dfm.set_index(["trade_date"], inplace=True,drop = False) 
         
-        
-
         end_date1 = '19950101'
         end_date2 = '19950101'
         #遍历每个财报日
@@ -117,7 +156,10 @@ class FCFF(object):
             l = len(df)
             s = df.iloc[0]['trade_date']
             e = df.iloc[l-1]['trade_date']   
-            dfm.loc[s:e,'evaluation'] = row['evaluation']    
+            dfm.loc[s:e,'evaluation'] = row['evaluation']  
+            dfm.loc[s:e,'evaluation_grow_rate'] = row['evaluation_grow_rate']  
+            dfm.loc[s:e,'total_mv_grow_rate'] = (dfm.loc[e]['total_mv'] - dfm.loc[s]['total_mv'])/dfm.loc[s]['total_mv']
+           
             #df[Y_col] = (df['total_mv'] - df.iloc[0]['total_mv']) / df.iloc[0]['total_mv']
             dfm.loc[s:e,Y_col] = (df['total_mv'] - df.iloc[0]['total_mv']) / df.iloc[0]['total_mv']
 
@@ -139,10 +181,10 @@ class FCFF(object):
         else:
             latestday = msql.getlatestday('daily_basic')
         dfm = pd.DataFrame()
-        FCFF_csv = self._get_path_build_for_monitor(pdate=pdate)
+        FCFF_csv = self._get_path_build_for_monitor(pdate=latestday)
         if pcode != None :
             try:
-                dfm = ut.read_csv(FCFF_csv,index_col = 0)
+                dfm = pd.read_csv(FCFF_csv,index_col = 0)
                 if not dfm.empty:
                     #已经是最新的数据了，直接返回需要的值
                     if dfm.iloc[0]['lastupdate'] == int(latestday):
@@ -152,10 +194,11 @@ class FCFF(object):
 
         df_now = msql.pull_mysql(db = 'daily_basic',date = latestday)
         if df_now.empty:
+            print('FCFF monitor df_now.empty:',latestday)
             return df_now
         df_now.set_index(["ts_code"], inplace=True,drop = True) 
 
-        df_basic = ut.read_csv(FCFF_csv,index_col = False )
+        df_basic = pd.read_csv(FCFF_csv,index_col = False )
         df_basic.set_index(["ts_code"], inplace=True,drop = False)
         df_basic['lastupdate'] = latestday
         df_basic['total_mv'] = df_now['total_mv']*10000
@@ -168,6 +211,7 @@ class FCFF(object):
 
  
         df_basic['grade'] = df_basic['市场低估比率'].apply(lambda x: _fun(x))
+        df_basic['evaluation_price'] = df_basic['evaluation']/(df_now['total_share']*10000)
 
         
         if pdate !=None:
@@ -178,22 +222,13 @@ class FCFF(object):
 
         df_basic.to_csv(self.monitor_csv,encoding='utf_8_sig',index = True)
 
-    def all_build_for_monitor(self):
-        for day in range(1995,self.thisyear,1):
-            day1 = str(day)+'0630'
-            print(day1)
-            self._build_for_monitor(pdate = day1)
-
-            day2 = str(day)+'1231'
-            self._build_for_monitor(pdate = day2)
-
     def _get_path_build_for_monitor(self,pdate=None):
         if pdate == None:
             msql = md.datamodule()
             end_date = msql.getlatestday()
         else:#20190418，为了backtest，生成所有日期的信息
             end_date = pdate
-
+    
         if end_date[4:] <='0630':
             end_date = end_date[:4]+'0630'
         else:
@@ -201,7 +236,6 @@ class FCFF(object):
 
         return self._trainpath(end_date)
 
-    #根据季度报估值，每季度调用一次，如果pdate为空，则默认生成最新的数据  
     def _build_for_monitor(self,pdate = None):
         df_rslt = pd.DataFrame()
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
@@ -248,6 +282,54 @@ class FCFF(object):
         filepath=self._get_path_build_for_monitor(pdate=pdate)
         df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False) 
 
+    def _build_for_monitor_one(self,pcode=None,p1 = None):
+        pdate = p1
+        print(pdate)
+        df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
+        msql = md.datamodule()
+
+        ts_code_df = msql.getts_code()
+        if pdate == None:
+            end_date = msql.getlatestday()
+        else:#20190418，为了backtest，生成所有日期的信息
+            end_date = pdate
+
+        if end_date[4:] <='0630':
+            end_date = end_date[:4]+'0630'
+        else:
+            end_date = end_date[:4]+'1231' 
+        code = {}
+        code['ts_code'] = pcode
+      
+        print(code['ts_code'])
+        df_income = msql.pull_mysql(db = 'income',ts_code = code['ts_code'])
+        df_cash = msql.pull_mysql(db = 'cashflow',ts_code = code['ts_code'])
+        df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = code['ts_code'])
+        df_future = msql.pull_mysql(db = 'future_income',ts_code = code['ts_code'])
+        df1 = self._buildtemplate(df = df_template,code = code['ts_code'],pdate = end_date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
+        
+        if df1.empty:
+            return
+        dic = {}
+
+        dic['ts_code'] = [code['ts_code']]
+        dic['evaluation'] = [df1['y-6'][37]]
+        dic['sus_grow_rate'] = [df1['y-6'][22]]
+        dic['y1_grow_rate'] = [df1['y1'][22]]
+        dic['y2_grow_rate'] = [df1['y2'][22]]
+        dic['y3_grow_rate'] = [df1['y3'][22]]
+        dic['y4_grow_rate'] = [df1['y4'][22]]
+        dic['y5_grow_rate'] = [df1['y5'][22]]
+
+        dic['y0_grow_rate'] = [df1['y0'][14]]
+        dic['y-1_grow_rate'] = [df1['y-1'][14]]
+        dic['y-2_grow_rate'] = [df1['y-2'][14]]
+
+        df1 = pd.DataFrame.from_dict(dic)
+        self.sem.acquire()
+        self.df_rslt = pd.concat([self.df_rslt,df1.loc[0:0,]],ignore_index = True)
+        self.sem.release()
+
     #pcode必须，储存一个code的evaluation数据到 /data/train_FCFF/002008.sz
     def detail_template(self,pcode = None,ptrade_date = None):
         if pcode == None or ptrade_date == None:
@@ -275,9 +357,10 @@ class FCFF(object):
         df_cash = msql.pull_mysql(db = 'cashflow',ts_code = pcode)
         df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = pcode)
         df_future = msql.pull_mysql(db = 'future_income',ts_code = pcode)
+        
 
         df_rslt = pd.DataFrame()
-
+        last_evalueation = 0
         for year in range(1995,self.thisyear,1):
             for month in (0,1):
                 if month ==0:
@@ -297,29 +380,33 @@ class FCFF(object):
         
                 dic = {}
 
-                dic['ts_code'] = [pcode]
-                dic['evaluation'] = [df1['y-6'][37]]
+                dic['ts_code'] = pcode
+                dic['evaluation'] = df1['y-6'][37]
                 dic['end_date'] = [date]
+                dic['debt']    = df1['y-6'][32]
 
-                dic['y0_flow'] = [df1['y0'][13]]
-                dic['y-1_flow'] = [df1['y-1'][13]]
-                dic['y-2_flow'] = [df1['y-2'][13]]
+                dic['y0_flow'] = df1['y0'][13]
+                dic['y-1_flow'] = df1['y-1'][13]
+                dic['y-2_flow'] = df1['y-2'][13]
 
-                dic['y0_income'] = [df1['y0'][8]]
-                dic['y-1_income'] = [df1['y-1'][8]]
-                dic['y-2_income'] = [df1['y-2'][8]]
+                dic['y0_income'] = df1['y0'][8]
+                dic['y-1_income'] = df1['y-1'][8]
+                dic['y-2_income'] = df1['y-2'][8]
 
-                dic['y0_grow_rate'] = [df1['y0'][14]]
-                dic['y-1_grow_rate'] = [df1['y-1'][14]]
-                dic['y-2_grow_rate'] = [df1['y-2'][14]]
+                dic['y0_grow_rate'] = df1['y0'][14]
+                dic['y-1_grow_rate'] = df1['y-1'][14]
+                dic['y-2_grow_rate'] = df1['y-2'][14]
 
-                dic['sus_grow_rate'] = [df1['y-6'][22]]
-                dic['y1_grow_rate'] = [df1['y1'][22]]
-                dic['y2_grow_rate'] = [df1['y2'][22]]
+                dic['sus_grow_rate'] = df1['y-6'][22]
+                dic['y1_grow_rate'] = df1['y1'][22]
+                dic['y2_grow_rate'] = df1['y2'][22]
+                if last_evalueation != 0:
+                    dic['evaluation_grow_rate'] = (dic['evaluation'] - last_evalueation)/last_evalueation
+                last_evalueation = dic['evaluation']
 
         
                 df2 = pd.DataFrame.from_dict(dic)
-                df_rslt = pd.concat([df_rslt,df2.loc[0:0,]],ignore_index = True)
+                df_rslt = pd.concat([df_rslt,df2],ignore_index = True)
 
                 if ptrade_date != None:
                     filepath=self._trainpath(pcode)
@@ -328,7 +415,7 @@ class FCFF(object):
     
         filepath=self._trainpath(pcode)
         df_rslt.to_csv(filepath,encoding='utf_8_sig',index = False)
-        self._monitor_one_train(pcode = pcode)
+        #self._monitor_one_train(pcode = pcode)
     
     def _buildtemplate(self,df,code,pdate,df_income,df_cash,df_blc,df_future):
         df = self._getdata(ts_code = code,ptemplate = df,pdate = pdate,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
@@ -561,9 +648,9 @@ class FCFF(object):
 
     def plot(self,ts_code):
         filepath = self._trainpath('monitor_'+ts_code)
-        dfm = ut.read_csv(filepath,index_col = None)
-        dfm['X'] = (dfm['evaluation']/10000)/dfm['total_share']/2
-        dfm['Y'] = dfm['total_mv']/dfm['total_share']
+        dfm = pd.read_csv(filepath,index_col = None)
+        dfm['X'] = dfm['evaluation_grow_rate']
+        dfm['Y'] = dfm['total_mv_grow_rate']
         dfm['trade_date'] = dfm['trade_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
         #df = dfm.loc[300:3000,'市场高估比率']
         #print(df)
@@ -578,6 +665,144 @@ class FCFF(object):
         plt.plot_date(dfm['trade_date'],dfm['Y'])
         plt.show()
 
+    def plotsave_one(self,ts_code):
+        plt.rcParams['font.family'] = ['sans-serif']
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+
+        msql = md.datamodule()
+        ts_name = msql.getname(ts_code)
+
+        filepath = self._trainpath(ts_code)
+
+        dfm = pd.read_csv(filepath,index_col = None)
+        dfm['evaluation_price'] = 0
+        dfm['close']    = 0
+        dfm['total_share']=0
+        dfm['close_date'] = '1111'
+        dfm['name'] = ts_name
+        dfm['evaluation_price_avg']=0 
+        dfm['evaluation_price_avg1'] = 0
+        
+        dfy = pd.DataFrame()  
+        dfz = pd.DataFrame()  
+        h_share = 0 
+        dfy = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = ts_code)
+        
+        dfz = msql.gettable(pdb = 'h_stock',ptable = 'h_stock')
+        dfz=dfz[dfz['ts_code']== ts_code]
+        if not dfz.empty:
+            h_share = dfz.iloc[0]['h_share']
+        dfm.set_index(["end_date"], inplace=True,drop = False)
+        dfy.set_index(["trade_date"], inplace=True,drop = False)
+       
+        j = 0
+        for i,row in dfm.iterrows():
+            date = row['end_date']
+
+            date = ut.findtradeday(pdf=dfy,pdate=date,pdatestr = 'trade_date')
+            dfm.loc[i,'close_date']  = dfy.loc[date]['trade_date']
+            total_share = dfy.loc[date]['total_share']*10000+h_share
+            dfm.loc[i,'total_share'] = total_share
+             
+            dfm.loc[i,'evaluation_price'] = row['evaluation']/total_share
+            dfm.loc[i,'close'] = dfy.loc[date]['close']
+            if j >= 2:
+                dfm.loc[i,'evaluation_price_avg'] = (dfm.iloc[j]['evaluation_price']+dfm.iloc[j-1]['evaluation_price']+dfm.iloc[j-2]['evaluation_price'])/3
+            else:
+                dfm.loc[i,'evaluation_price_avg'] = dfm.loc[i,'evaluation_price']
+            j = j+1
+
+        self.sem.acquire()
+        self.df_rslt = pd.concat([self.df_rslt,dfm],ignore_index = True)
+        self.sem.release()
+
+        #dfm['evaluation_price_avg1'] = dfm['evaluation_price'].apply('mean',axis=0)
+        #dfy['avg'] = dfy['close'].apply('mean',axis=0)
+        dfm['Y']=dfm['evaluation_price_avg']
+        dfy['Y']=dfy['close']
+        dfm = self.line(dfm)
+        dfy = self.line(dfy)
+
+        dfy['trade_date'] = dfy['trade_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
+        dfm['end_date'] = dfm['end_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
+        
+        plt.title(ts_name+'_'+ts_code,fontsize='large',fontweight='bold') 
+        #plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['evaluation_price'],ls='-',label='评估值')
+        plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['evaluation_price_avg'],ls='-',Markersize=0.1,color='darkorange',label='内涵值')
+        plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['y_line'],ls='--',Markersize=0,color='red',label='内涵值均线')
+        plt.plot_date(dfy['trade_date'],dfy['close'],ls='-',Markersize=0,color = 'darkgreen',label='实际股价')
+        plt.plot_date(dfy['trade_date'],dfy['y_line'],ls='--',Markersize=0,color = 'lightgreen',label='实际均线')
+
+        plt.legend(loc=0,ncol=2)
+        plt.savefig(filepath+'.png')
+        plt.clf()
+
+        #filepath = self._trainpath('xueqiu'+ts_code)
+        #self.df_rslt.to_csv(filepath,encoding='utf_8_sig',index = True)
+    def line(self,pdf = None):
+        df = pd.DataFrame()
+        df['Y'] = pdf['Y']
+        df = df.reset_index()
+        df['line_date'] = df.index
+        
+        rawmat = np.mat(df)
+        mat = rawmat[:,2]
+        y = rawmat[:,1]
+
+        clf = linear_model.LinearRegression(fit_intercept = True)
+        clf.fit(mat,y)
+        weights_OLS = float(clf.coef_[0][0])
+        df.index = pdf.index
+        pdf['y_line'] = df['line_date']*weights_OLS + clf.intercept_
+        return pdf
+    def monitor_one_xueqiu(self,ts_code = None,p3=None):
+        trade_date = p3
+        plt.rcParams['font.family'] = ['sans-serif']
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+
+        msql = md.datamodule()
+        ts_name = msql.getname(ts_code)
+
+        filepath = self._trainpath(ts_code)
+
+        dfm = pd.read_csv(filepath,index_col = None)
+        dfm['evaluation_price'] = 0
+        dfm['close']    = 0
+        dfm['total_share']=0
+        dfm['close_date'] = '1111'
+        dfm['name'] = ts_name
+        
+        dfy = pd.DataFrame()  
+        dfz = pd.DataFrame()  
+        h_share = 0 
+        dfy = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = ts_code)
+        
+        dfz = msql.gettable(pdb = 'h_stock',ptable = 'h_stock')
+        dfz=dfz[dfz['ts_code']== ts_code]
+        if not dfz.empty:
+            h_share = dfz.iloc[0]['h_share']
+            print(dfz)
+        dfm.set_index(["end_date"], inplace=True,drop = False)
+        dfy.set_index(["trade_date"], inplace=True,drop = False)
+
+        for i,row in dfm.iterrows():
+            date = row['end_date']
+
+            date = ut.findtradeday(pdf=dfy,pdate=date,pdatestr = 'trade_date')
+            dfm.loc[i,'close_date']  = dfy.loc[date]['trade_date']
+            total_share = dfy.loc[date]['total_share']*10000+h_share
+            dfm.loc[i,'total_share'] = total_share
+             
+            dfm.loc[i,'evaluation_price'] = row['evaluation']/total_share
+            dfm.loc[i,'close'] = dfy.loc[date]['close']
+
+        if trade_date != None:
+           dfm = dfm[dfm['end_date']==int(trade_date)]
+
+        self.sem.acquire()
+        self.df_rslt = pd.concat([self.df_rslt,dfm],ignore_index = True)
+        self.sem.release()
+    
     def _trainpath(self,file):
         fpath = file+'.csv'
         return os.path.join(config.MODULE_PATH['train_FCFF'], fpath)
@@ -599,9 +824,14 @@ class FCFF(object):
         file = self._trainpath(ts_code+'template')
         df_template.to_csv(file,encoding='utf_8_sig',index = True)
 
+
 if __name__ == '__main__':
-    all_build_for_monitor()
-    #f = FCFF()
+    #all_build_for_monitor()
+    fcff = FCFF()
+    fcff._build_one_for_monitor(pcode='000002.SZ',p1 = '20181231')
+    fcff._build_one_for_monitor(pcode='600036.SH',p1 = '20181231')
+    print(fcff.df_rslt)
+    #fcff.df_rslt.to_csv()
     #f.all_build_for_monitor()
     #f.monitor()
     #f.detail_template(pcode = '002672.SZ',ptrade_date = '20181231')
@@ -619,6 +849,7 @@ if __name__ == '__main__':
     #f.plot('000651.SZ')
     #d = f.monitor('000002.SZ')
     #print(d)
+    #piecewise_linear(t, deltas, k, m, changepoint_ts)
     
     
 

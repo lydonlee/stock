@@ -8,32 +8,18 @@ import matplotlib.pyplot as plt
 import module as md
 import util as ut
 import config
-
+    
 def build_Regression():
     reids_key = 'Regression'+'_build_one_train'
+    mutex=Lock()
     if md.redisConn.exists(reids_key):
          md.redisConn.delete(reids_key)
-
-    mutex=Lock()
-    ut.process_loop(by = 'ts_code',pFunc = _build_one_train,p1=mutex)
+    ut.process_loop(by = 'ts_code',pclass=Regression,pFunc = '_build_one_train',p1=mutex,p2=reids_key)
     print('build_Regression finish!')
     reg = Regression()
     if md.redisConn.exists(reids_key):
         df = pd.read_msgpack(md.redisConn.get(reids_key))
         df.to_csv(reg.r_csv,encoding='utf_8_sig',index = False)
-
-def _build_one_train(pcode = None,mutex=None,reg):
-    reg= Regression()
-    reg._build_one_train(pcode = pcode)
-    reids_key = 'Regression'+'_build_one_train'
-
-    mutex.acquire()
-    if md.redisConn.exists(reids_key):
-        df = pd.read_msgpack(md.redisConn.get(reids_key))
-        reg.df_rslt = pd.concat([df,reg.df_rslt],ignore_index = True)
-    md.redisConn.set(reids_key, reg.df_rslt.to_msgpack(compress='zlib'))
-    mutex.release()
-        
 
 class Regression(object):
     def __init__(self):
@@ -105,6 +91,7 @@ class Regression(object):
     def _build_one_train(self,pcode = None):
         if pcode == None:
             return
+        print(pcode)
         msql = md.datamodule()
         df_fina = msql.pull_mysql(db = 'fina_indicator',ts_code = pcode).dropna()
         df_basic = msql.pull_mysql(db = 'daily_basic_ts_code',ts_code = pcode).dropna()

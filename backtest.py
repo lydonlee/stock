@@ -24,32 +24,37 @@ class runtimes(object):
 def findbest():
      pool = Pool(processes=5) 
      pool.map(_findbest_worker, range(1,10))
+ 
 def _findbest_worker(j = 1):
     df = pd.DataFrame()
     maxn = 0
     maxi = 0
     i   = 0
-    startdate = '20170{}01'
-    enddate = '20181205'
+    startdate = '20150{}05'
+    enddate = '20181201'
     
-    s = startdate.format(j)
-    while( i<= 3):
+    startdate = startdate.format(j)
+    while( i<= 5):
         i = i + 0.01
         backtest = Backtest(pmanager = i)
         backtest.run(pstartdate=startdate,penddate=enddate,pstep=300)
         t = pd.DataFrame()
+        if backtest.hisnetvalue.empty:
+            return
         t['netvalue'] = backtest.hisnetvalue['netvalue']
-        mid = t.apply('sum',axis=0)
-        dic = {'i':i,'sum':mid}
+        mid = t.apply('max',axis=0)
+        dic = {'i':i,'max':mid}
         df = df.append(dic,ignore_index=True)
         if maxn < mid['netvalue']:
             maxn = mid['netvalue']
             maxi = i
-        print(i,mid['netvalue'])
+       
+        print(backtest.hisnetvalue)
+        print(backtest.account.journalaccount)
 
-    filepath = config.detaildir('FCFF_PNG',j+str(maxi)+'.png')
+    filepath = config.detaildir('FCFF_PNG',str(j)+'_'+str(maxi)+'.png')
     
-    plt.plot(df['i'],df['sum'],'r')
+    plt.plot(df['i'],df['max'],'r')
     plt.savefig(filepath)
     #plt.show()
 
@@ -65,7 +70,6 @@ class Backtest(object):
         msql = md.datamodule()
         days = msql.gettradedays(start_date1=pstartdate, end_date1=penddate)
         lenth = len(days)
-     
         for i in range(0,lenth,pstep):
             self._onbar(days[i])
             if i+ pstep >= lenth:
@@ -79,7 +83,6 @@ class Backtest(object):
         dfbuysell = self.manager.work(fcff)
         self.trader.work(pdf=dfbuysell,pdate=pdate,pfcff=fcff)
         net = self.account.netvalue(pdate = pdate)
-        #print('netvalue',pdate,net)
         dic = {'netvalue':net,'date':pdate}
         self.hisnetvalue = self.hisnetvalue.append(dic,ignore_index=True)
         
@@ -110,7 +113,10 @@ class Analyst(object):
     def buyandhold(self,pdate):
         if self.count == 0:
             fcff = fc.FCFF()
+            print("buyandhold",pdate)
             dffc = fcff.monitor(pdate=pdate)
+            if dffc.empty:
+                print('fcff.monitor empty:',pdate)
             self.count = 1
             return dffc
         return pd.DataFrame()
@@ -220,6 +226,9 @@ class Account(object):
         return dfjn
 
     def netvalue(self,pdate):
+        if self.journalaccount.empty:
+            print('journalaccount empty')
+            return
         if pdate < self.journalaccount.iloc[-1]['date']:
             print('错误日期')
             return None

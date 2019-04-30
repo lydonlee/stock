@@ -125,7 +125,17 @@ class datamodule(object):
      
         yconnect.dispose()
 
-    #为df增加股票名字，行业等基本信息    
+    #为df增加股票名字，行业等基本信息 
+    def getname(self,ts_code):
+        name = None
+        df = self.gettable(pdb='stock_basic',ptable = 'stock_basic')
+
+        df = df[df['ts_code']==ts_code]
+        if not df.empty:
+            name = df.iloc[0]['name']
+        return name
+
+
     def joinnames(self,df):
         df1 = self.gettable(pdb='stock_basic',ptable = 'stock_basic')
         df1.set_index(["ts_code"], inplace=True,drop = True)
@@ -159,7 +169,6 @@ class datamodule(object):
             print("err：pull_mysql:"+sql_cmd)
         yconnect.dispose()
         return df
-
 
     def _getstock_basic_net(self):
         self._init_tushare()
@@ -208,10 +217,6 @@ class datamodule(object):
         return tradedays_list
 
     def getlatestday(self,db = 'margin_detail'):
-        reids_key = 'getlatestday'+str(db)
-        if redisConn.exists(reids_key):
-            print('redis:'+reids_key)
-            return redisConn.get(reids_key)
         concmd = self.mysqlcmd.format(db)
         yconnect = create_engine(concmd)
         if db == 'daily_basic_ts_code':
@@ -224,9 +229,7 @@ class datamodule(object):
             df = pd.read_sql(sql=sql_cmd, con=yconnect)
             ttable = df.iloc[0][0]
             lastday = ttable[1:]
-
-        redisConn.set(reids_key, lastday)    
-        return lastday         
+        return str(lastday)         
 
     @redis_df_decorator()  
     def getts_code(self):
@@ -403,6 +406,41 @@ class datamodule(object):
             #df = pd.concat([df,df1],ignore_index = False,sort=False)
 
         #pd.io.sql.to_sql(df,db,con=yconnect, schema=db,if_exists='replace')
+    def _push_h_stock(self):
+        cfg = config.configs.module
+        db = 'h_stock'
+        concmd = self.mysqlcmd.format(db)
+        yconnect = create_engine(concmd) 
+        df = pd.DataFrame()
+        url_formate = 'http://stock.finance.sina.com.cn/hkstock/quotes/{}.html'
+        df = pd.read_csv(cfg.ah_stock_template,index_col = None)
+        driver = self.geturl()
+
+        dfcode =  self.getts_code()
+
+        for index, code in df.iterrows():
+            a_code = str(code['ts_code'])
+            a_code = a_code.rjust(6, '0')
+            ts_code1 = dfcode[dfcode['ts_code'].str.contains(a_code) ]
+            ts_code = ts_code1.iloc[0]['ts_code']
+            h_code = str(code['h_code'])
+            h_code = h_code.rjust(5, '0')
+
+            url = url_formate.format(h_code)
+
+            driver.get(url)
+            driver.implicitly_wait(10)
+            try:
+                h_share = driver.find_element_by_xpath("/html/body/div[4]/div[2]/div[2]/div[1]/div[1]/div[4]/ul[4]/li[3]/span").text
+                h_share = h_share[:-1]
+            except Exception as e:
+                print(e)
+                continue
+            d = {'ts_code': [ts_code], 'h_share': [float(h_share)*1e8],'h_code':[h_code]}
+      
+            df1 = pd.DataFrame.from_dict(d)
+     
+            pd.io.sql.to_sql(df1,db,con=yconnect, schema=db,if_exists='append')#,index = False)
 
 if __name__ == '__main__':
     d = datamodule()

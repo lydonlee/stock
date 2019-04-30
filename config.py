@@ -36,6 +36,7 @@ configs = {
         #'db_func_list'  : db_func_list,
         'mysqlrecord'   : os.path.join(MODULE_PATH['data'],'mysqlrecord1.csv'),
         'mysqlcmd'      : 'mysql+pymysql://root:152921@localhost:3306/{}?charset=utf8',
+        'ah_stock_template':os.path.join(MODULE_PATH['data'],'ah_stock_template.csv'),
     },
     'blackswan': {
         'blackswan_csv' : os.path.join(MODULE_PATH['data'],'mblackswan.csv'),
