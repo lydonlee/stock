@@ -60,7 +60,7 @@ class datamodule(object):
             sql_cmd = 'select * from `'+ts_code + '`'
         elif db == 'future_income':
             sql_cmd = 'select * from future_income where ts_code ='+ts_code[:-3]
-        else:
+        else:#daily_basic ,adj_factor
             sql_cmd = 'select * from '+'t'+ date
 
         try:
@@ -127,12 +127,18 @@ class datamodule(object):
 
     #为df增加股票名字，行业等基本信息 
     def getname(self,ts_code):
+        reids_key = 'getname'+str(ts_code)
+        if redisConn.exists(reids_key):
+            print('redis:'+reids_key)
+            return pickle.loads(redisConn.get(reids_key))
+
         name = None
         df = self.gettable(pdb='stock_basic',ptable = 'stock_basic')
 
         df = df[df['ts_code']==ts_code]
         if not df.empty:
             name = df.iloc[0]['name']
+            redisConn.set(reids_key, pickle.dumps(name))
         return name
 
 
@@ -276,7 +282,7 @@ class datamodule(object):
             self._push_db(db1)
         elif db1 == 'future_income':
             self._pushfutureincome()
-        else:
+        else:#daily_basic,adj_factor
             self._push_mysql(database = db1,start=s,end=now,firsttime=firsttime)
 
     def updatedball(self,firsttime = 0,daily = True,quter=False):
@@ -441,6 +447,60 @@ class datamodule(object):
             df1 = pd.DataFrame.from_dict(d)
      
             pd.io.sql.to_sql(df1,db,con=yconnect, schema=db,if_exists='append')#,index = False)
+    def getbest(self,pendday=None):
+        dfe = pd.DataFrame()
+        dfs = dfe
+        if pendday == None:
+            return dfe
+
+        endyear  = pendday[:4]
+        endmonth = pendday[4:]
+        if endmonth == '1231':
+            startday = endyear + '0630'
+        else:
+            startday = str(int(endyear)-1)+'1231'
+        
+        startday = self.get_near_date(db ='daily_basic',pdate =startday)
+        pendday  = self.get_near_date(db ='daily_basic',pdate =pendday)
+
+        dfs = self.pull_mysql(db = 'daily_basic',date = startday)
+        dfe = self.pull_mysql(db = 'daily_basic',date = pendday)
+        dff = self.pull_mysql(db = 'adj_factor',date = pendday)
+
+        dfs.set_index(["ts_code"], inplace=True,drop = False)
+        dfe.set_index(["ts_code"], inplace=True,drop = False)
+        dff.set_index(["ts_code"], inplace=True,drop = False)
+
+        dfe['start_close'] = dfs['close']
+        dfe['start_date'] = dfs['trade_date']
+        dfe['close_f'] = dfe['close']*dff['adj_factor']
+        dfs['close_f'] = dfs['close']*dff['adj_factor']
+        dfe['increase'] = (dfe['close_f'] - dfs['close_f'])/dfs['close_f']
+        dfe = dfe.sort_values(by = ['increase'],ascending = False)
+        dfe.to_csv('F:/best.csv')
+        return dfe
+    def get_near_date(self,db ='daily_basic',pdate=None):
+        if pdate == None:
+            return '00000000'
+        sqlcmd=self.mysqlcmd.format(db)
+        yconnect = create_engine(sqlcmd) 
+
+        table = 't'+pdate
+        for i in range(30):
+            sql_cmd = "SELECT  TABLE_NAME  FROM information_schema.TABLES WHERE  TABLE_SCHEMA='"+db+"' AND TABLE_NAME='"+ table+"'"
+            df = pd.read_sql(sql=sql_cmd, con=yconnect)
+            if df.empty:
+                pdate = str(int(pdate)-1)
+                table = 't'+pdate
+            else:
+                break
+        if not df.empty:
+            date = df.iloc[0]['TABLE_NAME']
+            return date[1:]
+
+        
+
+
 
 if __name__ == '__main__':
     d = datamodule()

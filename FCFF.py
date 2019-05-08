@@ -2,6 +2,7 @@ from multiprocessing import Pool
 from multiprocessing import Lock
 import threading
 import pandas as pd
+from pandas.plotting import register_matplotlib_converters
 import datetime
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,8 +15,9 @@ import tushare as ts
 import config
 import module  as md
 import util as ut
+import pytorch
 
-
+register_matplotlib_converters()
 # monitor ：用每天的数据和季度估值做比较，输出所有股票的当前估值 
 #train_FCFF_monitor：输出某只股票的所有历史估值
 #detail_template
@@ -682,6 +684,7 @@ class FCFF(object):
         dfm['name'] = ts_name
         dfm['evaluation_price_avg']=0 
         dfm['evaluation_price_avg1'] = 0
+       
         
         dfy = pd.DataFrame()  
         dfz = pd.DataFrame()  
@@ -718,25 +721,28 @@ class FCFF(object):
 
         #dfm['evaluation_price_avg1'] = dfm['evaluation_price'].apply('mean',axis=0)
         #dfy['avg'] = dfy['close'].apply('mean',axis=0)
+        
         dfm['Y']=dfm['evaluation_price_avg']
         dfy['Y']=dfy['close']
+        dfy['ROE'] = dfy['pb']/dfy['pe']*100
         dfm = self.line(dfm)
         dfy = self.line(dfy)
 
         dfy['trade_date'] = dfy['trade_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
         dfm['end_date'] = dfm['end_date'].apply(lambda x:datetime.datetime.strptime(str(x), "%Y%m%d"))
-        
+   
         plt.title(ts_name+'_'+ts_code,fontsize='large',fontweight='bold') 
         #plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['evaluation_price'],ls='-',label='评估值')
         plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['evaluation_price_avg'],ls='-',Markersize=0.1,color='darkorange',label='内涵值')
-        plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['y_line'],ls='--',Markersize=0,color='red',label='内涵值均线')
-        plt.plot_date(dfy['trade_date'],dfy['close'],ls='-',Markersize=0,color = 'darkgreen',label='实际股价')
+        plt.plot_date(dfm.loc['20021231':]['end_date'],dfm.loc['20021231':]['y_line'],ls='--',Markersize=0,color='darkorange',label='内涵值均线')
+        plt.plot_date(dfy['trade_date'],dfy['close'],ls='-',Markersize=0.1,color = 'darkgreen',label='实际股价')
         plt.plot_date(dfy['trade_date'],dfy['y_line'],ls='--',Markersize=0,color = 'lightgreen',label='实际均线')
+        plt.plot_date(dfy['trade_date'],dfy['ROE'],ls='-',Markersize=0,color = 'lightgreen',label='ROE')
 
         plt.legend(loc=0,ncol=2)
         plt.savefig(filepath+'.png')
         plt.clf()
-
+        plt.close()
         #filepath = self._trainpath('xueqiu'+ts_code)
         #self.df_rslt.to_csv(filepath,encoding='utf_8_sig',index = True)
     def line(self,pdf = None):
@@ -744,16 +750,35 @@ class FCFF(object):
         df['Y'] = pdf['Y']
         df = df.reset_index()
         df['line_date'] = df.index
-        
+
+
         rawmat = np.mat(df)
         mat = rawmat[:,2]
         y = rawmat[:,1]
-
         clf = linear_model.LinearRegression(fit_intercept = True)
         clf.fit(mat,y)
         weights_OLS = float(clf.coef_[0][0])
+        bias = clf.intercept_
         df.index = pdf.index
-        pdf['y_line'] = df['line_date']*weights_OLS + clf.intercept_
+        pdf['y_line'] = df['line_date']*weights_OLS + bias
+   
+        '''
+        lenth = len(df)
+        if lenth > 1000:
+            lr = 0.00001
+            epochs = 200
+        else:
+            lr = 0.001
+            epochs = 200
+
+        net = pytorch.Pytorch(pnet='linearRegression',d_in=1,plr=lr,pepochs = epochs)
+        net.fit(df_x=df.loc[:,'line_date':'line_date'],df_y=df.loc[:,'Y':'Y'])
+
+        weight = net.model.state_dict()['lin.weight'].numpy()[0][0]
+        bias   = net.model.state_dict()['lin.bias'].numpy()[0]
+        df.index = pdf.index
+        pdf['y_line'] = df['line_date']*weight + bias
+        '''
         return pdf
     def monitor_one_xueqiu(self,ts_code = None,p3=None):
         trade_date = p3
@@ -807,22 +832,18 @@ class FCFF(object):
         fpath = file+'.csv'
         return os.path.join(config.MODULE_PATH['train_FCFF'], fpath)
 
-    def buildone_template(self,ts_code):
+    def buildone_template(self,ts_code,pdate):
         df_template = pd.read_excel(self.template,sheet_name='估值结论（FCFF）',index_col = 'id')
         msql = md.datamodule()
         df_income = msql.pull_mysql(db = 'income',ts_code = ts_code)
         df_cash = msql.pull_mysql(db = 'cashflow',ts_code = ts_code)
         df_blc = msql.pull_mysql(db = 'balancesheet',ts_code = ts_code)
-
-        for year in range(1995,self.thisyear,1):
-                for month in (0,1):
-                    if month ==0:
-                        date = str(year)+'0630'
-                    elif month ==1:
-                        date = str(year)+'1231'
-                    df = self._buildtemplate(df =df_template, code = ts_code,pdate = date,df_income=df_income,df_cash=df_cash,df_blc=df_blc)
+        df_future = msql.pull_mysql(db = 'future_income',ts_code = ts_code)
+  
+        date = pdate
+        df = self._buildtemplate(df =df_template, code = ts_code,pdate = date,df_income=df_income,df_cash=df_cash,df_blc=df_blc,df_future=df_future)
         file = self._trainpath(ts_code+'template')
-        df_template.to_csv(file,encoding='utf_8_sig',index = True)
+        df.to_csv(file,encoding='utf_8_sig',index = True)
 
 
 if __name__ == '__main__':

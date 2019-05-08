@@ -1,3 +1,4 @@
+import shutil
 import yagmail
 import keyring
 from io import StringIO
@@ -6,6 +7,7 @@ from threading import Thread
 from multiprocessing import Process
 from selenium import webdriver
 import module as md
+
 
 #yagmail.register('904721093@qq.com', 'aaaaaaa')
 def sendmail(mailcontent = 'this is content'):
@@ -119,7 +121,7 @@ def process_by_code(pclass,pFunc = None,p1=None,p2=None,p3=None,p4=None,p5=None)
         for t in processses:
             t.join()
 
-#pfunc的第一个参数必须是pcode,容许有5个参数，df 为ts_code
+#pfunc的第一个参数必须是pcode,容许有5个参数，df 为ts_code,
 def _process_by_code(pclass=None,pfunc=None,pstart=None,pend=None,p1=None,p2=None,p3=None,p4=None,p5=None):
     print('start process')
     if pfunc == None:
@@ -174,6 +176,18 @@ def findtradeday(pdf,pdate,pdatestr = 'trade_date'):
     df['sub'] = abs(pdf[pdatestr].apply(lambda x:int(x)) - int(pdate))
     i = df['sub'].idxmin()
     return pdf.loc[i][pdatestr]
+
+def copyfiles():
+    df = pd.read_csv('F:/best/best20181231c.csv')
+    df = df[df['increase']>0]
+    for i,row in df.iterrows():
+        srcfile = 'F:/stock/data/train_FCFF/'+row['ts_code']+'.csv'+'.png'
+        dstfile = 'F:/best/'+row['ts_code']+'.csv'+'.png'
+        try:
+            shutil.copyfile(srcfile,dstfile)
+        except:
+            print('no',srcfile)
+            continue
 
 if __name__ == '__main__':
     #geturl()

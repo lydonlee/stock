@@ -4,6 +4,7 @@ import module
 import regression 
 import backtest 
 import FCFF 
+import util
 helpinfor = '''
 md =module.datamodule()
     md.updatedball(firsttime = 0,daily = True,quter=False)
