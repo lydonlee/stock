@@ -751,7 +751,7 @@ class FCFF(object):
         df = df.reset_index()
         df['line_date'] = df.index
 
-
+        '''
         rawmat = np.mat(df)
         mat = rawmat[:,2]
         y = rawmat[:,1]
@@ -773,12 +773,12 @@ class FCFF(object):
 
         net = pytorch.Pytorch(pnet='linearRegression',d_in=1,plr=lr,pepochs = epochs)
         net.fit(df_x=df.loc[:,'line_date':'line_date'],df_y=df.loc[:,'Y':'Y'])
-
+        print('state',net.model.state_dict())
         weight = net.model.state_dict()['lin.weight'].numpy()[0][0]
         bias   = net.model.state_dict()['lin.bias'].numpy()[0]
         df.index = pdf.index
         pdf['y_line'] = df['line_date']*weight + bias
-        '''
+     
         return pdf
     def monitor_one_xueqiu(self,ts_code = None,p3=None):
         trade_date = p3

@@ -61,7 +61,7 @@ def _findbest_worker(j = 1):
 class Backtest(object):
     def __init__(self,pwhichAccount = 0,pmanager = 0):
         self.account     = Account(pwhichAccount = pwhichAccount)
-        self.manager     = Manager(par = pmanager)
+        self.manager     = Manager(par = pmanager,paccount = self.account)
         self.analyst     = Analyst()
         self.trader      = Trader(self.account)
         self.hisnetvalue = pd.DataFrame()
@@ -125,8 +125,9 @@ class Analyst(object):
 #2，买入后持有时间不够长，错误时间卖出了
 #3，频繁买卖，佣金损失大
 class Manager(object):
-    def __init__(self,par = 0):
+    def __init__(self,par = 0,paccount = None):
         self.par = par
+        self.account = paccount
     def work(self,pdf):
         dfbs = pd.DataFrame()
         if pdf.empty:
@@ -140,12 +141,18 @@ class Manager(object):
 
     def _stockselection(self,df):
         jn = pd.DataFrame()
+        if self.account == None:
+            bp = 1e5
+        else:
+            bp = self.account.buypower
+            
         #df = df[df['grade'] > 0]
         df = df[df['grade'] < self.par]
         df = df[:10]
         jn['ts_code'] = df['ts_code']
         jn['price'] = df['close']
-        jn['Shares'] = 1e5/100//jn['price']*100
+
+        jn['Shares'] = bp/100//jn['price']*100
         jn['buysell'] = 1
         return jn
 
@@ -158,14 +165,15 @@ class Trader(object):
     def __init__(self,paccount):
         self.account = paccount
     def work(self,pdf,pdate,pfcff):
-        if pdf.empty:
-            return
         df = pdf.copy(deep=True)
         hd = self.account.holding()
         if not hd.empty:
             for i,row in hd.iterrows():#处理卖出
                 ts = row['ts_code']
-                hd1 = df[df['ts_code']==ts]
+                if df.empty:
+                    hd1 = pd.DataFrame()
+                else:
+                    hd1 = df[df['ts_code']==ts]
                 if hd1.empty:#如果目标清单里没有该股票则卖出
                     row['buysell'] = -1
                     row['price'] = pfcff.loc[ts]['close']
@@ -185,12 +193,13 @@ class Account(object):
     def __init__(self,pwhichAccount):
         cfg = config.configs.Backtest
         self.account_csv = cfg.account_csv
+        self.commission_rate = 0.005
         if pwhichAccount == 1:#如果是账户1，从csv读取
             self.journalaccount  = ut.read_csv(self.account_csv,index_col = 0)
             self.buypower = self.account.iloc[-1]['buypower']
         else:
             self.journalaccount = pd.DataFrame(journalaccount)
-            self.buypower = 1e6
+            self.buypower = 1e5
             self.commi = 0
 
     def buysell(self,pbs,pdate):
@@ -199,8 +208,12 @@ class Account(object):
             print('没钱继续买入啦！')
             return
         comm = self.commission(pbs=pbs)
+        buypower = bp - comm
+        if buypower < 0:
+            print('不够支付佣金！')
+            return
         self.commi = self.commi + comm
-        self.buypower = bp - comm
+        self.buypower = buypower
         dic = {'ts_code':pbs['ts_code'],'date':pdate,'price':pbs['price'],'Shares':pbs['Shares'],'buysell':pbs['buysell'],'buypower':self.buypower}
         self.journalaccount = self.journalaccount.append(dic, ignore_index=True)
         
@@ -225,10 +238,10 @@ class Account(object):
         dfjn = dfjn[dfjn['Shares']>0]
         return dfjn
 
-    def netvalue(self,pdate):
+    def netvalue(self,pdate=None):
         if self.journalaccount.empty:
-            print('journalaccount empty')
-            return
+            return self.buypower
+            
         if pdate < self.journalaccount.iloc[-1]['date']:
             print('错误日期')
             return None

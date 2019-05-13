@@ -12,6 +12,7 @@ MODULE_PATH['backtests'] = os.path.join(ROOT_PATH, 'backtests')
 MODULE_PATH['module'] = os.path.join(ROOT_PATH, 'module')
 MODULE_PATH['data'] = os.path.join(ROOT_PATH, 'data')
 MODULE_PATH['train_FCFF'] = os.path.join(MODULE_PATH['data'], 'train_FCFF')
+MODULE_PATH['DQN'] = os.path.join(MODULE_PATH['data'], 'DQN')
 MODULE_PATH['detail'] = os.path.join(MODULE_PATH['data'], 'detail')
 
 # 添加到环境变量中
@@ -20,7 +21,7 @@ for path in MODULE_PATH.values():
         sys.path.append(path)
 
 if 'Windows' in platform.uname() :
-    db_update_day = ['index_daily','daily_basic','daily_basic_ts_code','margin_detail']
+    db_update_day = ['index_daily','daily_basic','adj_factor','daily_basic_ts_code','margin_detail']
     #'trade_cal','stock_basic'要在最前面，因为里面包含了其他数据库更新需要的信息
     db_update_quter = ['trade_cal','stock_basic','fina_indicator','balancesheet','cashflow','dividend','income','future_income']
     #db_update_quter = ['income','future_income']
@@ -63,7 +64,7 @@ configs = {
     },
     'Backtest':{
         'account_csv'    :os.path.join(MODULE_PATH['data'],'account.csv'),
-    }
+    },
 }
 
 # Simple dict but support access as x.y style.
@@ -96,3 +97,9 @@ def detaildir(dirname,file):
         os.makedirs(dirc)
 
     return os.path.join(dirc,file)
+
+def FCFFpath(filename):
+        fpath = filename+'.csv'
+        return os.path.join(MODULE_PATH['train_FCFF'], fpath)
+def DQNpath(filename):
+        return os.path.join(MODULE_PATH['DQN'], filename)

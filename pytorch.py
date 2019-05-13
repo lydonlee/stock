@@ -109,11 +109,11 @@ class Pytorch(object):
         train_dl = self._get_data(train_ds,self.bs)
         return train_dl
 
-    def savemodule(self,pmodulepath):
-        torch.save(self.model.state_dict(), pmodulepath)
+def savemodule(model,pmodulepath):
+    torch.save(model.state_dict(), pmodulepath)
 
-    def loadmoule(self,pmodulepath):
-        self.model.load_state_dict(torch.load(pmodulepath),strict=False)
+def loadmoule(model,pmodulepath):
+    model.load_state_dict(torch.load(pmodulepath),strict=False)
         #self.model.eval()
         #self.model.train()
     
