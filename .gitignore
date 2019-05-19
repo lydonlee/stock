@@ -7,5 +7,12 @@ data/template.xls
 *.pyc
 *.pyc
 *.rar
+*.png
+*.SH
+*.SZ
+*.o
+*.csv
+*.SH
+*.SZ
 =======
 >>>>>>> a47ba3e72b137bd899cac94605dcd5e5b621a235

@@ -1,3 +1,4 @@
+import numpy as np
 import shutil
 import yagmail
 import keyring
@@ -188,6 +189,10 @@ def copyfiles():
         except:
             print('no',srcfile)
             continue
+def MaxMinNormalization(x):
+    """[0,1] normaliaztion"""
+    x = (x - np.min(x)) / (np.max(x) - np.min(x))
+    return x
 
 if __name__ == '__main__':
     #geturl()

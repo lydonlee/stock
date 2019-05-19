@@ -88,7 +88,7 @@ class Backtest(object):
         
     def plot(self):
         msql = md.datamodule()
-        sh = msql.gettable(pdb = 'index_daily',ptable = 'index_daily')
+        sh = msql.gettable(pdb = 'index_daily',ptable = '`000001.sh`')
         df = self.hisnetvalue.copy(deep=True)
 
         sh.set_index(["trade_date"], inplace=True,drop = False)
